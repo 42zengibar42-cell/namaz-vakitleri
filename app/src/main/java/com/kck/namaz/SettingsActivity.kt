@@ -56,7 +56,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun build() {
         prefs = Prefs(this); l = L(this)
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(20), dp(16), dp(32))
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(20), dp(16), dp(110))
         }
         root.addView(tv(l.t("Ayarlar", "Einstellungen"), 24f, C.TEXT, true))
 
@@ -267,8 +267,34 @@ class SettingsActivity : AppCompatActivity() {
 
         val sv = ScrollView(this).apply { setBackgroundColor(C.BG) }
         sv.addView(root)
-        setContentView(sv)
+        scroll = sv
+
+        // Hareketli "Tamam" düğmesi: her zaman altta durur, basınca ana sayfaya döner
+        val ok = button("✓  " + l.t("Tamam", "Fertig")) { finish() }.apply {
+            textSize = 19f
+            setPadding(dp(46), dp(15), dp(46), dp(15))
+            background = roundBg(C.GOLD, dp(30).toFloat())
+            elevation = dp(8).toFloat()
+        }
+        val frame = android.widget.FrameLayout(this)
+        frame.addView(sv, android.widget.FrameLayout.LayoutParams(-1, -1))
+        frame.addView(ok, android.widget.FrameLayout.LayoutParams(-2, -2,
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(22) })
+        setContentView(frame)
+        android.animation.AnimatorSet().apply {
+            playTogether(
+                android.animation.ObjectAnimator.ofFloat(ok, "scaleX", 1f, 1.08f).apply {
+                    repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE },
+                android.animation.ObjectAnimator.ofFloat(ok, "scaleY", 1f, 1.08f).apply {
+                    repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE }
+            )
+            duration = 900
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            start()
+        }
     }
+
+    private var scroll: ScrollView? = null
 
     private fun fmtOff(v: Int) = when {
         v > 0 -> "+$v dk"
@@ -277,11 +303,9 @@ class SettingsActivity : AppCompatActivity() {
     }.let { if (l.tr) it else it.replace("dk", "Min") }
 
     private fun rebuild() {
-        val y = (window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0) as? ScrollView)?.scrollY ?: 0
+        val y = scroll?.scrollY ?: 0
         build()
-        (window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0) as? ScrollView)?.post {
-            (window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0) as? ScrollView)?.scrollTo(0, y)
-        }
+        scroll?.let { sv -> sv.post { sv.scrollTo(0, y) } }
     }
 
     private fun sourceOk(): Boolean = prefs.fromDiyanet(java.time.LocalDate.now(prefs.zone))
