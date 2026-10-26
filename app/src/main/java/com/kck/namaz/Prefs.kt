@@ -72,13 +72,18 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("adhan", true)
         set(v) = p.edit().putBoolean("adhan", v).apply()
 
-    var adhanUri: String?
-        get() = p.getString("adhanUri", null)
-        set(v) = p.edit().putString("adhanUri", v).apply()
+    /** Vakte özel ezan dosyası; null = uygulamadaki ezan. */
+    fun adhanUri(i: Int): String? {
+        val v = p.getString("adhanUri$i", null) ?: p.getString("adhanUri", null) // eski sürümden kalan ortak seçim
+        return if (v.isNullOrEmpty()) null else v
+    }
+    fun adhanName(i: Int): String? = if (adhanUri(i) == null) null
+        else p.getString("adhanName$i", null) ?: p.getString("adhanName", null)
+    fun setAdhanFile(i: Int, uri: String?, name: String?) =
+        p.edit().putString("adhanUri$i", uri ?: "").putString("adhanName$i", name).apply()
 
-    var adhanName: String?
-        get() = p.getString("adhanName", null)
-        set(v) = p.edit().putString("adhanName", v).apply()
+    fun adhanOn(i: Int): Boolean = p.getBoolean("adhanOn$i", true)
+    fun setAdhanOn(i: Int, v: Boolean) = p.edit().putBoolean("adhanOn$i", v).apply()
 
     fun times(date: LocalDate): LongArray {
         val c = city

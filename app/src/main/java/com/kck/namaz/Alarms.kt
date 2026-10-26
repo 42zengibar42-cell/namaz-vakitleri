@@ -95,7 +95,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val prefs = Prefs(ctx)
         if (idx in 0 until PrayerCalc.COUNT) {
             val isOnTime = time - System.currentTimeMillis() < 90_000L
-            if (prefs.adhan && idx != 1 && isOnTime) {
+            if (prefs.adhan && prefs.adhanOn(idx) && idx != 1 && isOnTime) {
                 val s = Intent(ctx, AdhanService::class.java).putExtra("idx", idx).putExtra("time", time)
                 try { ctx.startForegroundService(s) } catch (e: Exception) { show(ctx, idx, time) }
             } else show(ctx, idx, time)
@@ -135,7 +135,7 @@ class AdhanService : Service() {
         val idx = intent?.getIntExtra("idx", 2) ?: 2
         val time = intent?.getLongExtra("time", System.currentTimeMillis()) ?: System.currentTimeMillis()
         val l = L(this)
-        val (title, text) = if (idx < 0) Pair(l.t("Ezan deneme", "Adhan-Test"), "") else Scheduler.message(this, idx, time)
+        val (title, text) = if (idx < 0) Pair(l.t("Ezan deneme", "Adhan-Test") + " · " + l.names.getOrElse(intent?.getIntExtra("snd", 2) ?: 2) { "" }, "") else Scheduler.message(this, idx, time)
         val stopPi = PendingIntent.getService(
             this, 2, Intent(this, AdhanService::class.java).setAction("stop"),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -152,7 +152,8 @@ class AdhanService : Service() {
             startForeground(200, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         else startForeground(200, n)
 
-        val uri = Prefs(this).adhanUri
+        val snd = intent?.getIntExtra("snd", idx) ?: idx
+        val uri = Prefs(this).adhanUri(if (snd in 0 until PrayerCalc.COUNT) snd else 2)
         try {
             player?.release()
             val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)

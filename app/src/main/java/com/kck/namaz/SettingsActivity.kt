@@ -107,31 +107,56 @@ class SettingsActivity : AppCompatActivity() {
 
         // Ezan
         val ez = section(root, l.t("EZAN SESİ", "ADHAN-TON"))
-        switchRow(ez, l.t("Vakit girince ezan çal", "Adhan zur Gebetszeit abspielen"), prefs.adhan) { prefs.adhan = it }
-        ez.addView(tv(l.t("Ses: ", "Ton: ") + (prefs.adhanName ?: l.t("Uygulamadaki ezan", "Eingebauter Adhan")), 14f, C.MUTED), lp().apply { topMargin = dp(4) })
-        ez.addView(ghostButton(l.t("Başka ezan dosyası seç (mp3)", "Andere Adhan-Datei wählen (mp3)")) {
-            val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
-            try { startActivityForResult(i, pickAudio) } catch (e: Exception) { }
-        }, lp().apply { topMargin = dp(10) })
-        if (prefs.adhanUri != null) {
-            ez.addView(ghostButton(l.t("Uygulamadaki ezana dön", "Eingebauten Adhan nutzen")) {
-                prefs.adhanUri = null; prefs.adhanName = null; rebuild()
-            }, lp().apply { topMargin = dp(8) })
-        }
-        run {
-            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            r.addView(ghostButton("▶ " + l.t("Dene", "Testen")) {
-                startForegroundService(Intent(this, AdhanService::class.java).putExtra("idx", -1))
-            }, lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
-            r.addView(ghostButton("■ " + l.t("Durdur", "Stopp")) {
-                startService(Intent(this, AdhanService::class.java).setAction("stop"))
-            }, lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
-            ez.addView(r, lp().apply { topMargin = dp(8) })
+        switchRow(ez, l.t("Vakit girince ezan çal", "Adhan zur Gebetszeit abspielen"), prefs.adhan) { prefs.adhan = it; rebuild() }
+        if (prefs.adhan) {
+            ez.addView(tv(l.t("Her vakit için ayrı ezan seçebilirsiniz.", "Für jede Gebetszeit kann ein eigener Adhan gewählt werden."),
+                12f, C.MUTED), lp().apply { topMargin = dp(4) })
+            for (i in intArrayOf(0, 2, 3, 4, 5)) {
+                val box = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = roundBg(C.BG, dp(12).toFloat())
+                    setPadding(dp(12), dp(8), dp(12), dp(10))
+                }
+                val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                top.addView(tv(l.names[i], 17f, C.TEXT, true), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                top.addView(SwitchCompat(this).apply {
+                    isChecked = prefs.adhanOn(i)
+                    setOnCheckedChangeListener { _, v -> prefs.setAdhanOn(i, v); rebuild() }
+                })
+                box.addView(top, lp())
+                if (prefs.adhanOn(i)) {
+                    box.addView(tv("🎵 " + (prefs.adhanName(i) ?: l.t("Uygulamadaki ezan", "Eingebauter Adhan")), 14f, C.MUTED).apply {
+                        maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                    }, lp().apply { topMargin = dp(2) })
+                    val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                    val small = { v: android.widget.TextView -> v.textSize = 13f; v.setPadding(dp(4), dp(9), dp(4), dp(9)); v }
+                    r.addView(small(ghostButton("▶ " + l.t("Dinle", "Hören")) {
+                        startForegroundService(Intent(this, AdhanService::class.java).putExtra("idx", -1).putExtra("snd", i))
+                    }), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(4) })
+                    r.addView(small(ghostButton("■") {
+                        startService(Intent(this, AdhanService::class.java).setAction("stop"))
+                    }), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.55f).apply { leftMargin = dp(4); rightMargin = dp(4) })
+                    r.addView(small(button("📁 " + l.t("Değiştir", "Ändern")) {
+                        val it = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
+                        try { startActivityForResult(it, pickAudio + 100 + i) } catch (e: Exception) { }
+                    }), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(4) })
+                    box.addView(r, lp().apply { topMargin = dp(8) })
+                    if (prefs.adhanUri(i) != null) {
+                        box.addView(tv("↺ " + l.t("Uygulamadaki ezana dön", "Eingebauten Adhan nutzen"), 13f, C.GOLD).apply {
+                            setPadding(0, dp(8), 0, 0)
+                            setOnClickListener { prefs.setAdhanFile(i, null, null); rebuild() }
+                        }, lp())
+                    }
+                } else {
+                    box.addView(tv(l.t("Ezan yok, sadece bildirim", "Kein Adhan, nur Hinweis"), 13f, C.MUTED), lp())
+                }
+                ez.addView(box, lp().apply { topMargin = dp(10) })
+            }
         }
         ez.addView(tv(l.t(
             "Güneş vaktinde ezan okunmaz, sadece bildirim gelir. Ezan kapalıysa normal bildirim sesi çalar. Telefonun 'Alarm' sesi kısıksa ezan duyulmaz.",
             "Bei Sonnenaufgang gibt es keinen Adhan, nur einen Hinweis. Ist der Adhan aus, ertönt der normale Hinweiston. Die Lautstärke folgt der Wecker-Lautstärke."
-        ), 12f, C.MUTED), lp().apply { topMargin = dp(8) })
+        ), 12f, C.MUTED), lp().apply { topMargin = dp(10) })
 
         // Dakika düzeltme
         val adj = section(root, l.t("DAKİKA DÜZELTME", "MINUTEN-KORREKTUR"))
@@ -258,7 +283,8 @@ class SettingsActivity : AppCompatActivity() {
     @Deprecated("")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != pickAudio || resultCode != RESULT_OK) return
+        val idx = requestCode - pickAudio - 100
+        if (idx !in 0 until PrayerCalc.COUNT || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e: Exception) { }
         var name = "ezan.mp3"
@@ -267,7 +293,17 @@ class SettingsActivity : AppCompatActivity() {
                 if (it.moveToFirst()) name = it.getString(0) ?: name
             }
         } catch (e: Exception) { }
-        prefs.adhanUri = uri.toString(); prefs.adhanName = name; prefs.adhan = true
+        prefs.setAdhanFile(idx, uri.toString(), name)
+        prefs.setAdhanOn(idx, true)
         rebuild()
+        val others = intArrayOf(0, 2, 3, 4, 5).filter { it != idx }
+        AlertDialog.Builder(this)
+            .setMessage(l.t("\"$name\" ${l.names[idx]} için seçildi. Diğer vakitlerde de kullanılsın mı?",
+                "\"$name\" für ${l.names[idx]} gewählt. Auch für die anderen Zeiten nutzen?"))
+            .setPositiveButton(l.t("Tüm vakitlere", "Für alle")) { _, _ ->
+                others.forEach { prefs.setAdhanFile(it, uri.toString(), name) }; rebuild()
+            }
+            .setNegativeButton(l.t("Sadece ${l.names[idx]}", "Nur ${l.names[idx]}"), null)
+            .show()
     }
 }
