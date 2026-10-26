@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var countTime: TextView
     private lateinit var dayLabel: TextView
     private lateinit var hijriLabel: TextView
+    private lateinit var dayInfo: TextView
     private val rowViews = ArrayList<LinearLayout>()
     private val timeViews = ArrayList<TextView>()
     private val bellViews = ArrayList<TextView>()
@@ -75,6 +76,10 @@ class MainActivity : AppCompatActivity() {
         root.addView(city)
         hijriLabel = tv("", 14f, C.MUTED)
         root.addView(hijriLabel, lp().apply { topMargin = dp(2) })
+        dayInfo = tv("", 15f, C.GOLD, true).apply {
+            setOnClickListener { startActivity(Intent(this@MainActivity, DaysActivity::class.java)) }
+        }
+        root.addView(dayInfo, lp().apply { topMargin = dp(4) })
 
         // Geri sayım kartı
         val cc = card().apply { gravity = Gravity.CENTER_HORIZONTAL }
@@ -128,6 +133,15 @@ class MainActivity : AppCompatActivity() {
         b1.addView(button("⚙ " + l.t("Ayarlar", "Einstellungen")) { startActivity(Intent(this, SettingsActivity::class.java)) },
             lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
         root.addView(b1, lp().apply { topMargin = dp(16) })
+        val b2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        b2.addView(ghostButton("🕌 " + l.t("Dini Günler", "Religiöse Tage")) { startActivity(Intent(this, DaysActivity::class.java)) },
+            lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+        val ram = ReligiousDays.ramadanFor(today())
+        if (ram != null && java.time.temporal.ChronoUnit.DAYS.between(today(), ram.first) <= 30) {
+            b2.addView(ghostButton("🌙 " + l.t("İmsakiye", "Ramadan-Kalender")) { startActivity(Intent(this, ImsakiyeActivity::class.java)) },
+                lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
+        }
+        root.addView(b2, lp().apply { topMargin = dp(10) })
 
         root.addView(tv(l.t("Hesaplama: Diyanet yöntemi", "Berechnung: Diyanet-Methode"), 12f, C.MUTED).apply {
             gravity = Gravity.CENTER
@@ -159,6 +173,8 @@ class MainActivity : AppCompatActivity() {
             else -> ds
         }
         hijriLabel.text = Hijri.text(l, date)
+        dayInfo.text = dayInfoText(date)
+        dayInfo.visibility = if (dayInfo.text.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         updateCountdown()
     }
 
@@ -175,7 +191,12 @@ class MainActivity : AppCompatActivity() {
         val left = (nextTime - now) / 1000
         countText.text = String.format(Locale.US, "%02d:%02d:%02d", left / 3600, (left / 60) % 60, left % 60)
         val n = l.names[nextIdx]
-        countLabel.text = l.t("$n vaktine kalan", "Verbleibend bis $n")
+        val imsakDay = if (t0[0] > now) today() else today().plusDays(1)
+        countLabel.text = when {
+            nextIdx == 0 && ReligiousDays.inRamadan(imsakDay) -> l.t("🌙 Sahur'un bitmesine (imsak) kalan", "🌙 Verbleibend bis Sahur-Ende")
+            nextIdx == 4 && ReligiousDays.inRamadan(today()) -> l.t("🌙 İftara kalan", "🌙 Verbleibend bis Iftar")
+            else -> l.t("$n vaktine kalan", "Verbleibend bis $n")
+        }
         countTime.text = "$n  ${hm(nextTime)}"
 
         for (i in 0 until PrayerCalc.COUNT) {
@@ -186,5 +207,25 @@ class MainActivity : AppCompatActivity() {
         }
         // Gün değiştiyse listeyi yenile
         if (dayShift == 0L && timeViews[0].text != hm(t0[0])) fillDay()
+    }
+
+    private fun dayInfoText(date: LocalDate): String {
+        val parts = ArrayList<String>()
+        val ram = ReligiousDays.ramadanFor(date)
+        if (ram != null && !date.isBefore(ram.first)) {
+            val n = java.time.temporal.ChronoUnit.DAYS.between(ram.first, date) + 1
+            parts.add("🌙 " + l.t("Ramazan'ın $n. günü", "$n. Tag des Ramadan"))
+        }
+        for (d in ReligiousDays.onDate(date)) {
+            if (d.kind == Kind.RAMAZAN) continue
+            parts.add(ReligiousDays.emoji(d.kind) + " " + ReligiousDays.name(l, d.kind) +
+                if (d.kind.night) l.t(" (bu akşam)", " (heute Abend)") else "")
+        }
+        if (parts.isEmpty()) {
+            ReligiousDays.onDate(date.plusDays(1)).firstOrNull()?.let {
+                parts.add(l.t("Yarın: ", "Morgen: ") + ReligiousDays.name(l, it.kind))
+            }
+        }
+        return parts.joinToString("  ·  ")
     }
 }

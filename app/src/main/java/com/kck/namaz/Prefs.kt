@@ -82,6 +82,10 @@ class Prefs(ctx: Context) {
     fun setAdhanFile(i: Int, uri: String?, name: String?) =
         p.edit().putString("adhanUri$i", uri ?: "").putString("adhanName$i", name).apply()
 
+    var religiousNotify: Boolean
+        get() = p.getBoolean("relNotify", true)
+        set(v) = p.edit().putBoolean("relNotify", v).apply()
+
     fun adhanOn(i: Int): Boolean = p.getBoolean("adhanOn$i", true)
     fun setAdhanOn(i: Int, v: Boolean) = p.edit().putBoolean("adhanOn$i", v).apply()
 

@@ -19,6 +19,7 @@ import java.util.Locale
 object Scheduler {
     const val CH_VAKIT = "vakit"
     const val CH_EZAN = "ezan"
+    const val CH_GUN = "dinigun"
 
     fun channels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -31,10 +32,43 @@ object Scheduler {
                 setSound(null, null)
             }
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CH_GUN, l.t("Dini günler", "Religiöse Tage"), NotificationManager.IMPORTANCE_DEFAULT)
+        )
+    }
+
+    /** Dini günler için sıradaki hatırlatmayı kurar (1 gün önce 19:00, o gün 09:00). */
+    fun scheduleReligious(ctx: Context) {
+        val prefs = Prefs(ctx)
+        val am = ctx.getSystemService(AlarmManager::class.java)
+        val intent = Intent(ctx, ReligiousReceiver::class.java)
+        am.cancel(PendingIntent.getBroadcast(ctx, 3, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        if (!prefs.religiousNotify) return
+        val now = System.currentTimeMillis()
+        val zone = prefs.zone
+        var best: Triple<Long, Int, Boolean>? = null
+        ReligiousDays.all.forEachIndexed { i, d ->
+            val before = d.date.minusDays(1).atTime(19, 0).atZone(zone).toInstant().toEpochMilli()
+            val on = d.date.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            for ((t, isBefore) in listOf(Pair(before, true), Pair(on, false))) {
+                if (t > now + 1000 && (best == null || t < best!!.first)) best = Triple(t, i, isBefore)
+            }
+        }
+        val b = best ?: return
+        intent.putExtra("i", b.second).putExtra("before", b.third).putExtra("t", b.first)
+        val pi = PendingIntent.getBroadcast(ctx, 3, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        try {
+            if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms())
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, b.first, pi)
+            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, b.first, pi)
+        } catch (e: SecurityException) {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, b.first, pi)
+        }
     }
 
     /** Sıradaki etkin vakit için alarm kurar. */
     fun scheduleNext(ctx: Context) {
+        try { scheduleReligious(ctx) } catch (e: Exception) { }
         val prefs = Prefs(ctx)
         val am = ctx.getSystemService(AlarmManager::class.java)
         val now = System.currentTimeMillis()
@@ -113,6 +147,35 @@ class AlarmReceiver : BroadcastReceiver() {
             .setContentIntent(Scheduler.openAppIntent(ctx))
             .setAutoCancel(true).build()
         try { NotificationManagerCompat.from(ctx).notify(100 + idx, n) } catch (e: SecurityException) { }
+    }
+}
+
+class ReligiousReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        Scheduler.channels(ctx)
+        val i = intent.getIntExtra("i", -1)
+        val before = intent.getBooleanExtra("before", false)
+        val t = intent.getLongExtra("t", 0L)
+        val all = ReligiousDays.all
+        val d = all.getOrNull(i)
+        // Geç kalmış (ör. telefon kapalıydı) eski hatırlatmaları gösterme
+        if (d != null && Prefs(ctx).religiousNotify && System.currentTimeMillis() - t < 6 * 3600_000L) {
+            val l = L(ctx)
+            // Aynı gün başka etkinlik varsa başlığa ekle (ör. Üç Aylar + Regaib)
+            val same = all.filter { it.date == d.date && it !== d }
+            var (title, text) = ReligiousDays.message(l, d, before)
+            if (same.isNotEmpty()) text = same.joinToString(", ") { ReligiousDays.name(l, it.kind) } + " · " + text
+            val n = NotificationCompat.Builder(ctx, Scheduler.CH_GUN)
+                .setSmallIcon(R.drawable.ic_notif)
+                .setContentTitle(title).setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(PendingIntent.getActivity(ctx, 4, Intent(ctx, DaysActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+                .setAutoCancel(true).build()
+            try { NotificationManagerCompat.from(ctx).notify(300 + i % 50, n) } catch (e: SecurityException) { }
+        }
+        Scheduler.scheduleReligious(ctx)
     }
 }
 

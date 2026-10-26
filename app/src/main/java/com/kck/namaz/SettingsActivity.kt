@@ -105,6 +105,13 @@ class SettingsActivity : AppCompatActivity() {
             }
         }, lp().apply { topMargin = dp(8) })
 
+        val rel = section(root, l.t("DİNİ GÜNLER", "RELIGIÖSE TAGE"))
+        switchRow(rel, l.t("Kandil ve bayram bildirimleri", "Hinweise zu heiligen Nächten und Festen"), prefs.religiousNotify) {
+            prefs.religiousNotify = it; Scheduler.scheduleReligious(this)
+        }
+        rel.addView(tv(l.t("Bir gün önce saat 19:00'da ve o gün saat 09:00'da hatırlatır.",
+            "Erinnert am Vortag um 19:00 und am Tag selbst um 09:00."), 12f, C.MUTED), lp().apply { topMargin = dp(4) })
+
         // Ezan
         val ez = section(root, l.t("EZAN SESİ", "ADHAN-TON"))
         switchRow(ez, l.t("Vakit girince ezan çal", "Adhan zur Gebetszeit abspielen"), prefs.adhan) { prefs.adhan = it; rebuild() }

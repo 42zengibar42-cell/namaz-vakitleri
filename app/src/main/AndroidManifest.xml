@@ -29,8 +29,11 @@
         <activity android:name=".QiblaActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MonthActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".DaysActivity" android:exported="false" />
+        <activity android:name=".ImsakiyeActivity" android:exported="false" />
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <receiver android:name=".ReligiousReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
