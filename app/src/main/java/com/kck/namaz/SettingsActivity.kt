@@ -69,6 +69,14 @@ class SettingsActivity : AppCompatActivity() {
         lr.addView(deB, lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
         lang.addView(lr, lp())
 
+        val fs = section(root, l.t("EKRAN", "BILDSCHIRM"))
+        switchRow(fs, l.t("Tam ekran (üst ve alt çubukları gizle)", "Vollbild (Leisten ausblenden)"), NamazApp.fullScreenOn(this)) {
+            getSharedPreferences("namaz", MODE_PRIVATE).edit().putBoolean("fullScreen", it).apply()
+            NamazApp.applyFullScreen(this)
+        }
+        fs.addView(tv(l.t("Çubukları görmek için ekranın üst ya da alt kenarından kaydırın.",
+            "Zum Anzeigen der Leisten vom Rand wischen."), 12f, C.MUTED), lp().apply { topMargin = dp(4) })
+
         // Konum
         val loc = section(root, l.t("KONUM", "STANDORT"))
         val place = if (prefs.diyanetId > 0) DiyanetDb.byId(this, prefs.diyanetId) else null

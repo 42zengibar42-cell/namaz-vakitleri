@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         rowViews.clear(); timeViews.clear(); bellViews.clear(); nameViews.clear()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(20), dp(16), dp(24))
+            setPadding(dp(16), dp(14), dp(16), dp(16))
         }
 
         // Şehir
@@ -92,7 +92,7 @@ class MainActivity : AppCompatActivity() {
         countText = tv("--:--:--", 46f, C.GOLD, true).apply { gravity = Gravity.CENTER }
         countTime = tv("", 15f, C.TEXT).apply { gravity = Gravity.CENTER }
         cc.addView(countLabel, lp()); cc.addView(countText, lp()); cc.addView(countTime, lp())
-        root.addView(cc, lp().apply { topMargin = dp(16) })
+        root.addView(cc, lp().apply { topMargin = dp(10) })
 
         // Gün seçici
         val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
         for (i in 0 until PrayerCalc.COUNT) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(13), dp(8), dp(13))
+                setPadding(dp(12), dp(10), dp(8), dp(10))
             }
             val name = tv(l.names[i], 18f, C.TEXT)
             val time = tv("--:--", 22f, C.TEXT, true)
@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
             lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6); rightMargin = dp(6) })
         b1.addView(button("⚙ " + l.t("Ayarlar", "Einstellungen")) { startActivity(Intent(this, SettingsActivity::class.java)) },
             lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
-        root.addView(b1, lp().apply { topMargin = dp(16) })
+        root.addView(b1, lp().apply { topMargin = dp(12) })
         val b2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         b2.addView(ghostButton("🕌 " + l.t("Dini Günler", "Religiöse Tage")) { startActivity(Intent(this, DaysActivity::class.java)) },
             lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
