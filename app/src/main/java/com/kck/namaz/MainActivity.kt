@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var hijriLabel: TextView
     private lateinit var dayInfo: TextView
     private lateinit var sourceLabel: TextView
+    private lateinit var silentBtn: TextView
     private val rowViews = ArrayList<LinearLayout>()
     private val timeViews = ArrayList<TextView>()
     private val bellViews = ArrayList<TextView>()
@@ -146,8 +147,15 @@ class MainActivity : AppCompatActivity() {
                 lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
         }
         root.addView(b2, lp().apply { topMargin = dp(10) })
-        root.addView(ghostButton("📿 " + l.t("Zikirmatik", "Zikr-Zähler")) { startActivity(Intent(this, ZikirActivity::class.java)) },
-            lp().apply { topMargin = dp(10) })
+        val b3 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        b3.addView(ghostButton("📿 " + l.t("Zikirmatik", "Zikr-Zähler")) { startActivity(Intent(this, ZikirActivity::class.java)) },
+            lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+        silentBtn = ghostButton("") { toggleSilent() }.apply {
+            setOnLongClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)); true }
+        }
+        b3.addView(silentBtn, lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
+        root.addView(b3, lp().apply { topMargin = dp(10) })
+        updateSilentBtn()
 
         sourceLabel = tv("", 12f, C.MUTED).apply {
             gravity = Gravity.CENTER
@@ -243,5 +251,25 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return parts.joinToString("  ·  ")
+    }
+
+    private fun updateSilentBtn() {
+        val on = Silent.enabled(this)
+        silentBtn.text = if (on) "🤫 " + l.t("Sessiz mod: Açık", "Stumm: An") else "🔔 " + l.t("Sessiz mod: Kapalı", "Stumm: Aus")
+        silentBtn.background = roundBg(if (on) C.HI else C.CARD, dp(12).toFloat(), C.GOLD)
+    }
+
+    private fun toggleSilent() {
+        val on = !Silent.enabled(this)
+        Silent.setEnabled(this, on)
+        Silent.schedule(this)
+        updateSilentBtn()
+        val f = SimpleDateFormat("HH:mm", Locale.GERMANY).apply { timeZone = TimeZone.getTimeZone(prefs.zone) }
+        val msg = if (on) {
+            val mode = if (Silent.full(this)) l.t("sessize", "lautlos") else l.t("titreşime", "auf Vibration")
+            l.t("Namaz vakitlerinde telefon ${Silent.minutes(this)} dk $mode alınacak. Ayarlar için uzun basın.",
+                "Zur Gebetszeit wird das Handy ${Silent.minutes(this)} Min. $mode geschaltet. Lange drücken für Einstellungen.")
+        } else l.t("Sessiz mod kapatıldı", "Stumm-Modus aus")
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
     }
 }

@@ -253,6 +253,10 @@ class SettingsActivity : AppCompatActivity() {
             "Die Zeiten kommen aus dem Diyanet-Kalender Ihres Ortes und werden gespeichert. Ist Diyanet nicht erreichbar, rechnet das Handy selbst (im Sommer 1-4 Min. Abweichung möglich)."
         ), 12f, C.MUTED), lp().apply { topMargin = dp(18) })
 
+        val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "?" }
+        root.addView(tv(l.t("Sürüm $ver", "Version $ver"), 12f, C.MUTED).apply { gravity = Gravity.CENTER },
+            lp().apply { topMargin = dp(14) })
+
         val sv = ScrollView(this).apply { setBackgroundColor(C.BG) }
         sv.addView(root)
         setContentView(sv)
@@ -277,11 +281,13 @@ class SettingsActivity : AppCompatActivity() {
     private fun sourceText(): String {
         val id = prefs.diyanetId
         if (id <= 0) return "⚠ " + l.t("Diyanet ilçesi seçilmedi · vakitler hesaplanıyor", "Kein Diyanet-Ort gewählt · Zeiten werden berechnet")
-        if (!sourceOk()) return "⚠ " + l.t("Diyanet verisi henüz yok · şimdilik hesaplanıyor", "Noch keine Diyanet-Daten · vorläufig berechnet")
+        if (!sourceOk()) return "⚠ " + l.t("Diyanet verisi henüz yok · şimdilik hesaplanıyor", "Noch keine Diyanet-Daten · vorläufig berechnet") +
+            (DiyanetTimes.lastError(this)?.let { "\n(" + it + ")" } ?: "")
         val df = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
         val last = DiyanetTimes.lastDate(this, id)?.format(df) ?: "-"
         val at = java.time.Instant.ofEpochMilli(DiyanetTimes.fetchedAt(this, id)).atZone(prefs.zone).toLocalDate().format(df)
-        return "✅ " + l.t("Diyanet takvimi · $last tarihine kadar · güncelleme: $at", "Diyanet-Kalender · bis $last · aktualisiert: $at")
+        val via = if (DiyanetTimes.lastSource(this) == "ezanvakti.emushaf.net") l.t(" (aracı sunucu üzerinden)", " (über Spiegelserver)") else ""
+        return "✅ " + l.t("Diyanet takvimi$via · $last tarihine kadar · güncelleme: $at", "Diyanet-Kalender$via · bis $last · aktualisiert: $at")
     }
 
     /** Diyanet'ten indir, sonucu göster. */

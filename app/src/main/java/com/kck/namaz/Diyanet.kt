@@ -196,14 +196,14 @@ object DiyanetTimes {
         return m.groupValues[1].replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..360.0 }
     }
 
-    private fun get(url: String): String {
+    private fun get(url: String, json: Boolean = false): String {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15000; c.readTimeout = 25000
         c.instanceFollowRedirects = true
         c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36")
-        c.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+        c.setRequestProperty("Accept", if (json) "application/json" else "text/html,application/xhtml+xml")
         c.setRequestProperty("Accept-Language", "tr-TR,tr;q=0.9")
-        c.setRequestProperty("Referer", "https://namazvakitleri.diyanet.gov.tr/tr-TR")
+        if (!json) c.setRequestProperty("Referer", "https://namazvakitleri.diyanet.gov.tr/tr-TR")
         try {
             val code = c.responseCode
             if (code != 200) throw Exception("HTTP $code")
@@ -211,22 +211,100 @@ object DiyanetTimes {
         } finally { c.disconnect() }
     }
 
-    /** İnternetten indir (arka planda çağırın). */
-    fun fetch(ctx: Context, id: Int): Result {
-        return try {
-            val html = get("https://namazvakitleri.diyanet.gov.tr/tr-TR/$id")
-            val data = parse(html)
-            if (data.isEmpty()) return Result(0, null, "parse")
-            save(ctx, id, data)
-            val q = parseQibla(html)
-            val p = ctx.getSharedPreferences("namaz", Context.MODE_PRIVATE).edit()
-                .putLong("dyFetched_$id", System.currentTimeMillis())
-            if (q != null) p.putFloat("dyQibla_$id", q.toFloat())
-            p.apply()
-            Result(data.size, q, null)
-        } catch (e: Exception) {
-            Result(0, null, e.message ?: "net")
+    /** Sayfayı gizli bir tarayıcıda açıp HTML'ini alır (site JavaScript/çerez kontrolü yapıyorsa). Arka plandan çağrılır. */
+    private fun getViaWebView(ctx: Context, url: String, timeoutMs: Long = 30000): String? {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var result: String? = null
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        var web: android.webkit.WebView? = null
+        main.post {
+            try {
+                val w = android.webkit.WebView(ctx.applicationContext)
+                web = w
+                w.settings.javaScriptEnabled = true
+                w.settings.domStorageEnabled = true
+                w.settings.userAgentString = w.settings.userAgentString.replace("; wv", "")
+                fun grab() {
+                    w.evaluateJavascript("document.documentElement.outerHTML") { v ->
+                        try {
+                            val html = org.json.JSONArray("[$v]").getString(0)
+                            if (parse(html).isNotEmpty()) { result = html; latch.countDown() }
+                        } catch (e: Exception) { }
+                    }
+                }
+                w.webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView?, u: String?) {
+                        main.postDelayed({ grab() }, 1500)
+                        main.postDelayed({ grab() }, 5000)
+                    }
+                }
+                w.loadUrl(url)
+            } catch (e: Throwable) { latch.countDown() }
         }
+        latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        main.post { try { web?.stopLoading(); web?.destroy() } catch (e: Throwable) { } }
+        return result
+    }
+
+    /** ezanvakti.emushaf.net: Diyanet verisini aynı ilçe numarasıyla JSON olarak veren aracı sunucu. */
+    private fun parseJson(txt: String): Map<LocalDate, IntArray> {
+        val out = HashMap<LocalDate, IntArray>()
+        val arr = try { org.json.JSONArray(txt) } catch (e: Exception) { return out }
+        val keys = listOf("imsak", "gunes", "ogle", "ikindi", "aksam", "yatsi")
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val map = HashMap<String, String>()
+            val it = o.keys()
+            while (it.hasNext()) { val k = it.next(); map[CityDb.norm(k).replace(" ", "")] = o.optString(k) }
+            val dateStr = map["miladitarihkisa"] ?: map.values.firstOrNull { dotDate.containsMatchIn(it) } ?: continue
+            val (d, _) = parseDate(dateStr) ?: continue
+            val ts = keys.map { k -> map[k]?.let { v -> timeRe.find(v)?.let { it.groupValues[1].toInt() * 60 + it.groupValues[2].toInt() } } }
+            if (ts.any { it == null }) continue
+            out[d] = ts.map { it!! }.toIntArray()
+        }
+        return out
+    }
+
+    private fun sp(ctx: Context) = ctx.getSharedPreferences("namaz", Context.MODE_PRIVATE)
+
+    fun lastError(ctx: Context): String? = sp(ctx).getString("dyErr", null)
+    fun lastSource(ctx: Context): String? = sp(ctx).getString("dySrc", null)
+
+    /** İnternetten indir (arka planda çağırın): 1) Diyanet sitesi 2) gizli tarayıcı ile Diyanet sitesi 3) aracı sunucu. */
+    fun fetch(ctx: Context, id: Int): Result {
+        val url = "https://namazvakitleri.diyanet.gov.tr/tr-TR/$id"
+        val errors = ArrayList<String>()
+        var html: String? = null
+        var data: Map<LocalDate, IntArray> = emptyMap()
+        var src = "diyanet.gov.tr"
+        try {
+            html = get(url)
+            data = parse(html)
+            if (data.isEmpty()) errors.add("site: tablo yok")
+        } catch (e: Exception) { errors.add("site: " + (e.message ?: "hata")) }
+        if (data.isEmpty()) {
+            try {
+                val h = getViaWebView(ctx, url)
+                if (h != null) { html = h; data = parse(h) } else errors.add("tarayıcı: zaman aşımı")
+            } catch (e: Throwable) { errors.add("tarayıcı: " + (e.message ?: "hata")) }
+        }
+        if (data.isEmpty()) {
+            try {
+                data = parseJson(get("https://ezanvakti.emushaf.net/vakitler/$id", json = true))
+                if (data.isEmpty()) errors.add("yedek: veri yok") else src = "ezanvakti.emushaf.net"
+            } catch (e: Exception) { errors.add("yedek: " + (e.message ?: "hata")) }
+        }
+        if (data.isEmpty()) {
+            val msg = errors.joinToString(" · ")
+            sp(ctx).edit().putString("dyErr", msg).apply()
+            return Result(0, null, msg)
+        }
+        save(ctx, id, data)
+        val q = html?.let { parseQibla(it) }
+        val p = sp(ctx).edit().putLong("dyFetched_$id", System.currentTimeMillis()).remove("dyErr").putString("dySrc", src)
+        if (q != null) p.putFloat("dyQibla_$id", q.toFloat())
+        p.apply()
+        return Result(data.size, q, null)
     }
 
     fun fetchedAt(ctx: Context, id: Int): Long =
