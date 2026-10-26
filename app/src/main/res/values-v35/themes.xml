@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#0E4D3A</item>
+        <item name="colorPrimaryDark">#0A3A2C</item>
+        <item name="colorAccent">#E8BE5C</item>
+        <item name="android:windowBackground">#0B2A22</item>
+        <item name="android:statusBarColor">#0A3A2C</item>
+        <item name="android:navigationBarColor">#0B2A22</item>
+        <!-- Android 15+: içerik saat/batarya çubuğunun ve alt gezinme çubuğunun altına girmesin -->
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
