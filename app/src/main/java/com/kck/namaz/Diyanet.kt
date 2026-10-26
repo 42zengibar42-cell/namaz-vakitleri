@@ -198,7 +198,7 @@ object DiyanetTimes {
 
     private fun get(url: String, json: Boolean = false): String {
         val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 15000; c.readTimeout = 25000
+        c.connectTimeout = 7000; c.readTimeout = 12000
         c.instanceFollowRedirects = true
         c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36")
         c.setRequestProperty("Accept", if (json) "application/json" else "text/html,application/xhtml+xml")
@@ -212,7 +212,7 @@ object DiyanetTimes {
     }
 
     /** Sayfayı gizli bir tarayıcıda açıp HTML'ini alır (site JavaScript/çerez kontrolü yapıyorsa). Arka plandan çağrılır. */
-    private fun getViaWebView(ctx: Context, url: String, timeoutMs: Long = 30000): String? {
+    private fun getViaWebView(ctx: Context, url: String, timeoutMs: Long = 20000): String? {
         val latch = java.util.concurrent.CountDownLatch(1)
         var result: String? = null
         val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -232,13 +232,15 @@ object DiyanetTimes {
                         } catch (e: Exception) { }
                     }
                 }
+                // Sayfa yüklenirken tablo hazır olur olmaz al (bitmesini bekleme)
+                val poll = object : Runnable {
+                    override fun run() { if (latch.count > 0) { grab(); main.postDelayed(this, 700) } }
+                }
                 w.webViewClient = object : android.webkit.WebViewClient() {
-                    override fun onPageFinished(view: android.webkit.WebView?, u: String?) {
-                        main.postDelayed({ grab() }, 1500)
-                        main.postDelayed({ grab() }, 5000)
-                    }
+                    override fun onPageFinished(view: android.webkit.WebView?, u: String?) { grab() }
                 }
                 w.loadUrl(url)
+                main.postDelayed(poll, 1200)
             } catch (e: Throwable) { latch.countDown() }
         }
         latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -270,29 +272,34 @@ object DiyanetTimes {
     fun lastError(ctx: Context): String? = sp(ctx).getString("dyErr", null)
     fun lastSource(ctx: Context): String? = sp(ctx).getString("dySrc", null)
 
-    /** İnternetten indir (arka planda çağırın): 1) Diyanet sitesi 2) gizli tarayıcı ile Diyanet sitesi 3) aracı sunucu. */
+    /** Diyanet tarihleri: (gün sayısı, ilk, son) */
+    @Synchronized
+    fun range(ctx: Context, id: Int): Triple<Int, LocalDate?, LocalDate?> {
+        val m = cache.getOrPut(id) { read(ctx, id) }
+        return Triple(m.size, m.keys.minOrNull(), m.keys.maxOrNull())
+    }
+
+    /**
+     * İnternetten indir (arka planda çağırın). Yollar: Diyanet sitesi, gizli tarayıcıyla Diyanet sitesi,
+     * aracı sunucu. Son başarılı yol önce denenir, böylece sonraki güncellemeler birkaç saniye sürer.
+     */
     fun fetch(ctx: Context, id: Int): Result {
         val url = "https://namazvakitleri.diyanet.gov.tr/tr-TR/$id"
         val errors = ArrayList<String>()
         var html: String? = null
         var data: Map<LocalDate, IntArray> = emptyMap()
-        var src = "diyanet.gov.tr"
-        try {
-            html = get(url)
-            data = parse(html)
-            if (data.isEmpty()) errors.add("site: tablo yok")
-        } catch (e: Exception) { errors.add("site: " + (e.message ?: "hata")) }
-        if (data.isEmpty()) {
+        var src = ""
+        val routes = mutableListOf("http", "web", "json")
+        sp(ctx).getString("dyRoute", null)?.let { r -> if (routes.remove(r)) routes.add(0, r) }
+        for (r in routes) {
             try {
-                val h = getViaWebView(ctx, url)
-                if (h != null) { html = h; data = parse(h) } else errors.add("tarayıcı: zaman aşımı")
-            } catch (e: Throwable) { errors.add("tarayıcı: " + (e.message ?: "hata")) }
-        }
-        if (data.isEmpty()) {
-            try {
-                data = parseJson(get("https://ezanvakti.emushaf.net/vakitler/$id", json = true))
-                if (data.isEmpty()) errors.add("yedek: veri yok") else src = "ezanvakti.emushaf.net"
-            } catch (e: Exception) { errors.add("yedek: " + (e.message ?: "hata")) }
+                when (r) {
+                    "http" -> { val h = get(url); val d = parse(h); if (d.isNotEmpty()) { html = h; data = d } else errors.add("site: tablo yok") }
+                    "web" -> { val h = getViaWebView(ctx, url); if (h != null) { html = h; data = parse(h) } else errors.add("tarayıcı: zaman aşımı") }
+                    "json" -> { val d = parseJson(get("https://ezanvakti.emushaf.net/vakitler/$id", json = true)); if (d.isNotEmpty()) data = d else errors.add("yedek: veri yok") }
+                }
+            } catch (e: Throwable) { errors.add("$r: " + (e.message ?: "hata")) }
+            if (data.isNotEmpty()) { src = r; break }
         }
         if (data.isEmpty()) {
             val msg = errors.joinToString(" · ")
@@ -301,11 +308,14 @@ object DiyanetTimes {
         }
         save(ctx, id, data)
         val q = html?.let { parseQibla(it) }
-        val p = sp(ctx).edit().putLong("dyFetched_$id", System.currentTimeMillis()).remove("dyErr").putString("dySrc", src)
+        val p = sp(ctx).edit().putLong("dyFetched_$id", System.currentTimeMillis()).remove("dyErr")
+            .putString("dyRoute", src).putString("dySrc", if (src == "json") "ezanvakti.emushaf.net" else "diyanet.gov.tr")
         if (q != null) p.putFloat("dyQibla_$id", q.toFloat())
         p.apply()
         return Result(data.size, q, null)
     }
+
+    @Volatile var busy = false
 
     fun fetchedAt(ctx: Context, id: Int): Long =
         ctx.getSharedPreferences("namaz", Context.MODE_PRIVATE).getLong("dyFetched_$id", 0L)
@@ -326,11 +336,11 @@ object DiyanetTimes {
     /** Gerekirse arka planda yeniler; bitince onDone ana iş parçacığında değil, arka planda çağrılır. */
     fun refreshAsync(ctx: Context, id: Int, force: Boolean = false, onDone: ((Result) -> Unit)? = null) {
         val app = ctx.applicationContext
-        if (running) return
+        if (running || busy) return
         if (!force && !needsRefresh(app, id, LocalDate.now())) return
-        running = true
+        running = true; busy = true
         Thread {
-            val r = try { fetch(app, id) } finally { running = false }
+            val r = try { fetch(app, id) } finally { running = false; busy = false }
             if (r.error == null) Scheduler.scheduleNext(app)
             onDone?.invoke(r)
         }.start()

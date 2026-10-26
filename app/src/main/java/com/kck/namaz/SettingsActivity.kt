@@ -78,7 +78,7 @@ class SettingsActivity : AppCompatActivity() {
         loc.addView(button(l.t("Diyanet ilçesi ara ve seç", "Ort suchen (Diyanet)")) { chooseCity() }, lp().apply { topMargin = dp(10) })
         if (prefs.diyanetId > 0) loc.addView(ghostButton("⟳ " + l.t("Diyanet'ten şimdi güncelle", "Jetzt von Diyanet laden")) {
             download(prefs.diyanetId)
-        }, lp().apply { topMargin = dp(8) })
+        }.apply { if (downloading) alpha = 0.5f }, lp().apply { topMargin = dp(8) })
         loc.addView(ghostButton(l.t("Konumumu kullan (GPS)", "Meinen Standort nutzen (GPS)")) { useLocation() }, lp().apply { topMargin = dp(8) })
 
         // Bildirimler
@@ -281,6 +281,9 @@ class SettingsActivity : AppCompatActivity() {
     private fun sourceText(): String {
         val id = prefs.diyanetId
         if (id <= 0) return "⚠ " + l.t("Diyanet ilçesi seçilmedi · vakitler hesaplanıyor", "Kein Diyanet-Ort gewählt · Zeiten werden berechnet")
+        if (downloading) return "⟳ " + l.t("Diyanet'ten indiriliyor… (bu sırada uygulamayı kullanabilirsiniz)", "Wird von Diyanet geladen…")
+        val (n, first, last0) = DiyanetTimes.range(this, id)
+        if (!sourceOk() && n > 0) return "⚠ " + l.t("Diyanet verisi var ama bugün yok: $n gün, $first – $last0", "Diyanet-Daten ohne heute: $n Tage, $first – $last0")
         if (!sourceOk()) return "⚠ " + l.t("Diyanet verisi henüz yok · şimdilik hesaplanıyor", "Noch keine Diyanet-Daten · vorläufig berechnet") +
             (DiyanetTimes.lastError(this)?.let { "\n(" + it + ")" } ?: "")
         val df = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
@@ -291,14 +294,19 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /** Diyanet'ten indir, sonucu göster. */
-    private fun download(id: Int, onFail: (() -> Unit)? = null) {
-        val dlg = AlertDialog.Builder(this).setMessage(l.t("Diyanet'ten vakitler indiriliyor…", "Zeiten werden von Diyanet geladen…"))
-            .setCancelable(false).show()
+    private var downloading = false
+
+    /** Diyanet'ten indir; ekranı kilitlemez, durum satırında gösterir. */
+    private fun download(id: Int) {
+        if (downloading) return
+        downloading = true; DiyanetTimes.busy = true
+        rebuild()
         Thread {
-            val r = DiyanetTimes.fetch(this, id)
+            val r = try { DiyanetTimes.fetch(this, id) } finally { DiyanetTimes.busy = false }
             Scheduler.scheduleNext(this)
             runOnUiThread {
-                try { dlg.dismiss() } catch (e: Exception) { }
+                downloading = false
+                if (isFinishing) return@runOnUiThread
                 if (r.error == null) {
                     Toast.makeText(this, l.t("✅ ${r.days} günlük Diyanet takvimi indirildi", "✅ Diyanet-Kalender für ${r.days} Tage geladen"), Toast.LENGTH_LONG).show()
                 } else {
@@ -306,7 +314,6 @@ class SettingsActivity : AppCompatActivity() {
                         "Diyanet'e şu an ulaşılamadı. İnternet bağlantınızı kontrol edin. O zamana kadar vakitler telefonda hesaplanıyor.",
                         "Diyanet ist gerade nicht erreichbar. Bis dahin werden die Zeiten berechnet."
                     ) + "\n\n(" + r.error + ")").setPositiveButton("OK", null).show()
-                    onFail?.invoke()
                 }
                 rebuild()
             }
