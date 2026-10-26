@@ -189,8 +189,11 @@ class MainActivity : AppCompatActivity() {
             else -> ds
         }
         hijriLabel.text = Hijri.text(l, date)
-        sourceLabel.text = if (prefs.fromDiyanet(date)) "✅ " + l.t("Kaynak: Diyanet takvimi", "Quelle: Diyanet-Kalender")
-            else "⚠ " + l.t("Diyanet verisi yok · vakitler hesaplandı (Diyanet yöntemi)", "Keine Diyanet-Daten · berechnet (Diyanet-Methode)")
+        sourceLabel.text = when {
+            prefs.fromDiyanet(date) -> "✅ " + l.t("Kaynak: Diyanet takvimi", "Quelle: Diyanet-Kalender")
+            prefs.diyanetId <= 0 -> "📍 " + l.t("Hesaplanan: ${prefs.city.name} (Diyanet yöntemi)", "Berechnet: ${prefs.city.name} (Diyanet-Methode)")
+            else -> "⚠ " + l.t("Diyanet verisi yok · vakitler hesaplandı (Diyanet yöntemi)", "Keine Diyanet-Daten · berechnet (Diyanet-Methode)")
+        }
         dayInfo.text = dayInfoText(date)
         dayInfo.visibility = if (dayInfo.text.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         updateCountdown()

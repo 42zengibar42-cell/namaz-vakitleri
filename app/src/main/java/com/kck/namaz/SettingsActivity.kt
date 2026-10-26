@@ -83,7 +83,7 @@ class SettingsActivity : AppCompatActivity() {
         loc.addView(tv("📍 " + (place?.pretty(l) ?: prefs.city.name), 17f, C.TEXT, true), lp())
         if (place != null) loc.addView(tv(place.sub(l), 13f, C.MUTED), lp())
         loc.addView(tv(sourceText(), 13f, if (sourceOk()) C.GOLD else 0xFFE5A04B.toInt()), lp().apply { topMargin = dp(6) })
-        loc.addView(button(l.t("Diyanet ilçesi ara ve seç", "Ort suchen (Diyanet)")) { chooseCity() }, lp().apply { topMargin = dp(10) })
+        loc.addView(button(l.t("Yer ara ve seç", "Ort suchen")) { chooseCity() }, lp().apply { topMargin = dp(10) })
         if (prefs.diyanetId > 0) loc.addView(ghostButton("⟳ " + l.t("Diyanet'ten şimdi güncelle", "Jetzt von Diyanet laden")) {
             download(prefs.diyanetId)
         }.apply { if (downloading) alpha = 0.5f }, lp().apply { topMargin = dp(8) })
@@ -288,7 +288,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun sourceText(): String {
         val id = prefs.diyanetId
-        if (id <= 0) return "⚠ " + l.t("Diyanet ilçesi seçilmedi · vakitler hesaplanıyor", "Kein Diyanet-Ort gewählt · Zeiten werden berechnet")
+        if (id <= 0) return "📍 " + l.t("Telefonda hesaplanıyor (Diyanet yöntemi) · camiden 1–3 dk farklı olabilir", "Selbst berechnet (Diyanet-Methode) · bis 1–3 Min. Abweichung")
         if (downloading) return "⟳ " + l.t("Diyanet'ten indiriliyor… (bu sırada uygulamayı kullanabilirsiniz)", "Wird von Diyanet geladen…")
         val (n, first, last0) = DiyanetTimes.range(this, id)
         if (!sourceOk() && n > 0) return "⚠ " + l.t("Diyanet verisi var ama bugün yok: $n gün, $first – $last0", "Diyanet-Daten ohne heute: $n Tage, $first – $last0")
@@ -415,20 +415,26 @@ class SettingsActivity : AppCompatActivity() {
                 found = all.firstOrNull { it.key == k && (cc == null || it.cc == cc) } ?: continue
                 break
             }
-            if (found == null) {
-                // Yakındaki şehirlerden Diyanet listesinde olanı seç (en yakın)
-                val near = CityDb.load(this).filter { cc == null || it.cc == cc }
-                    .sortedBy { (it.lat - loc.latitude) * (it.lat - loc.latitude) + (it.lng - loc.longitude) * (it.lng - loc.longitude) }
-                    .take(60)
-                for (r in near) { found = all.firstOrNull { it.key == r.key && it.cc == r.cc }; if (found != null) break }
-            }
             val f = found
+            val near = if (f == null) DiyanetNear.nearest(this, loc.latitude, loc.longitude, 3) else emptyList()
+            val here = names.firstOrNull() ?: l.t("Konumum", "Mein Standort")
             runOnUiThread {
                 if (f != null) {
                     Toast.makeText(this, "📍 " + f.pretty(l), Toast.LENGTH_SHORT).show()
                     selectPlace(f.id)
                 } else {
-                    startActivityForResult(Intent(this, CityPickerActivity::class.java).putExtra("q", names.firstOrNull() ?: ""), 50)
+                    val labels = ArrayList<String>()
+                    near.forEachIndexed { i, (p, km) ->
+                        labels.add("🕌 " + p.pretty(l) + " · " + Math.round(km) + " km" +
+                            (if (i == 0) l.t("  (önerilen, camilerle aynı)", "  (empfohlen, wie Moscheen)") else ""))
+                    }
+                    labels.add("📍 " + l.t("$here için telefonda hesapla", "Für $here selbst berechnen") +
+                        l.t("\n   tam konuma göre · camiden 1–3 dk farklı olabilir", "\n   genauer Ort · bis 1–3 Min. Abweichung"))
+                    AlertDialog.Builder(this).setTitle(l.t("\"$here\" Diyanet listesinde yok", "\"$here\" nicht in der Diyanet-Liste"))
+                        .setItems(labels.toTypedArray()) { _, w ->
+                            if (w < near.size) selectPlace(near[w].first.id)
+                            else { prefs.diyanetId = 0; setCity(City(here, loc.latitude, loc.longitude, ZoneId.systemDefault().id)) }
+                        }.show()
                 }
             }
         }.start()
@@ -438,8 +444,15 @@ class SettingsActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 50) {
-            val id = data?.getIntExtra("id", 0) ?: 0
-            if (resultCode == RESULT_OK && id > 0) selectPlace(id)
+            if (resultCode != RESULT_OK || data == null) return
+            if (data.getBooleanExtra("calc", false)) {
+                prefs.diyanetId = 0
+                setCity(City(data.getStringExtra("name") ?: "?", data.getDoubleExtra("lat", 50.11), data.getDoubleExtra("lng", 8.68),
+                    data.getStringExtra("tz") ?: ZoneId.systemDefault().id))
+                return
+            }
+            val id = data.getIntExtra("id", 0)
+            if (id > 0) selectPlace(id)
             return
         }
         val idx = requestCode - pickAudio - 100
