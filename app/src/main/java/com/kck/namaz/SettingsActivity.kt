@@ -108,12 +108,17 @@ class SettingsActivity : AppCompatActivity() {
         // Ezan
         val ez = section(root, l.t("EZAN SESİ", "ADHAN-TON"))
         switchRow(ez, l.t("Vakit girince ezan çal", "Adhan zur Gebetszeit abspielen"), prefs.adhan) { prefs.adhan = it }
-        ez.addView(tv(l.t("Seçili dosya: ", "Gewählte Datei: ") + (prefs.adhanName ?: l.t("yok", "keine")), 14f, C.MUTED), lp().apply { topMargin = dp(4) })
-        ez.addView(button(l.t("Ezan ses dosyası seç (mp3)", "Adhan-Datei wählen (mp3)")) {
+        ez.addView(tv(l.t("Ses: ", "Ton: ") + (prefs.adhanName ?: l.t("Uygulamadaki ezan", "Eingebauter Adhan")), 14f, C.MUTED), lp().apply { topMargin = dp(4) })
+        ez.addView(ghostButton(l.t("Başka ezan dosyası seç (mp3)", "Andere Adhan-Datei wählen (mp3)")) {
             val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
             try { startActivityForResult(i, pickAudio) } catch (e: Exception) { }
         }, lp().apply { topMargin = dp(10) })
         if (prefs.adhanUri != null) {
+            ez.addView(ghostButton(l.t("Uygulamadaki ezana dön", "Eingebauten Adhan nutzen")) {
+                prefs.adhanUri = null; prefs.adhanName = null; rebuild()
+            }, lp().apply { topMargin = dp(8) })
+        }
+        run {
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             r.addView(ghostButton("▶ " + l.t("Dene", "Testen")) {
                 startForegroundService(Intent(this, AdhanService::class.java).putExtra("idx", -1))
@@ -124,8 +129,8 @@ class SettingsActivity : AppCompatActivity() {
             ez.addView(r, lp().apply { topMargin = dp(8) })
         }
         ez.addView(tv(l.t(
-            "Güneş vaktinde ezan okunmaz, sadece bildirim gelir. Ezan dosyası yoksa normal bildirim sesi çalar.",
-            "Bei Sonnenaufgang gibt es keinen Adhan, nur einen Hinweis. Ohne Datei ertönt der normale Hinweiston."
+            "Güneş vaktinde ezan okunmaz, sadece bildirim gelir. Ezan kapalıysa normal bildirim sesi çalar. Telefonun 'Alarm' sesi kısıksa ezan duyulmaz.",
+            "Bei Sonnenaufgang gibt es keinen Adhan, nur einen Hinweis. Ist der Adhan aus, ertönt der normale Hinweiston. Die Lautstärke folgt der Wecker-Lautstärke."
         ), 12f, C.MUTED), lp().apply { topMargin = dp(8) })
 
         // Dakika düzeltme

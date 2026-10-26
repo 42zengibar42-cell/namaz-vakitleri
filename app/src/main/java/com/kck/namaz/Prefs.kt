@@ -69,7 +69,7 @@ class Prefs(ctx: Context) {
         set(v) = p.edit().putInt("before", v).apply()
 
     var adhan: Boolean
-        get() = p.getBoolean("adhan", false)
+        get() = p.getBoolean("adhan", true)
         set(v) = p.edit().putBoolean("adhan", v).apply()
 
     var adhanUri: String?

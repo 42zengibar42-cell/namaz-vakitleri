@@ -95,7 +95,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val prefs = Prefs(ctx)
         if (idx in 0 until PrayerCalc.COUNT) {
             val isOnTime = time - System.currentTimeMillis() < 90_000L
-            if (prefs.adhan && prefs.adhanUri != null && idx != 1 && isOnTime) {
+            if (prefs.adhan && idx != 1 && isOnTime) {
                 val s = Intent(ctx, AdhanService::class.java).putExtra("idx", idx).putExtra("time", time)
                 try { ctx.startForegroundService(s) } catch (e: Exception) { show(ctx, idx, time) }
             } else show(ctx, idx, time)
@@ -153,20 +153,25 @@ class AdhanService : Service() {
         else startForeground(200, n)
 
         val uri = Prefs(this).adhanUri
-        if (uri == null) { stopAll(); return START_NOT_STICKY }
         try {
             player?.release()
-            player = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
-                )
-                setDataSource(this@AdhanService, Uri.parse(uri))
-                setOnCompletionListener { stopPlayingKeepNote() }
-                setOnErrorListener { _, _, _ -> stopPlayingKeepNote(); true }
+            val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
+            fun make(useOwn: Boolean): MediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(attrs)
+                if (useOwn) setDataSource(this@AdhanService, Uri.parse(uri))
+                else resources.openRawResourceFd(R.raw.ezan).use { fd ->
+                    setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+                }
                 prepare()
-                start()
             }
+            val mp = if (uri != null) {
+                try { make(true) } catch (e: Exception) { make(false) }
+            } else make(false)
+            mp.setOnCompletionListener { stopPlayingKeepNote() }
+            mp.setOnErrorListener { _, _, _ -> stopPlayingKeepNote(); true }
+            player = mp
+            mp.start()
         } catch (e: Exception) {
             stopPlayingKeepNote()
         }
