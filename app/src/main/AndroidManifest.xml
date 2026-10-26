@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <application
         android:allowBackup="true"
@@ -33,9 +34,18 @@
         <activity android:name=".DaysActivity" android:exported="false" />
         <activity android:name=".CityPickerActivity" android:exported="false" android:windowSoftInputMode="stateVisible|adjustResize" />
         <activity android:name=".ImsakiyeActivity" android:exported="false" />
+        <activity android:name=".ZikirActivity" android:exported="false" android:screenOrientation="portrait" />
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
         <receiver android:name=".ReligiousReceiver" android:exported="false" />
+        <receiver android:name=".WidgetTick" android:exported="false" />
+        <receiver android:name=".SilentReceiver" android:exported="false" />
+        <receiver android:name=".PrayerWidget" android:exported="true" android:label="Namaz Vakitleri">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info" />
+        </receiver>
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

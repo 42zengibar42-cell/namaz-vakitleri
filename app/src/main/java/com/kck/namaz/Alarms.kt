@@ -71,6 +71,8 @@ object Scheduler {
     /** Sıradaki etkin vakit için alarm kurar. */
     fun scheduleNext(ctx: Context) {
         try { scheduleReligious(ctx) } catch (e: Exception) { }
+        try { PrayerWidget.update(ctx) } catch (e: Exception) { }
+        try { Silent.schedule(ctx) } catch (e: Exception) { }
         val prefs = Prefs(ctx)
         val am = ctx.getSystemService(AlarmManager::class.java)
         val now = System.currentTimeMillis()

@@ -146,6 +146,8 @@ class MainActivity : AppCompatActivity() {
                 lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
         }
         root.addView(b2, lp().apply { topMargin = dp(10) })
+        root.addView(ghostButton("📿 " + l.t("Zikirmatik", "Zikr-Zähler")) { startActivity(Intent(this, ZikirActivity::class.java)) },
+            lp().apply { topMargin = dp(10) })
 
         sourceLabel = tv("", 12f, C.MUTED).apply {
             gravity = Gravity.CENTER

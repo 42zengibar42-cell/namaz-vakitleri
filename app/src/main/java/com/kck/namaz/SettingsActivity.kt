@@ -117,6 +117,47 @@ class SettingsActivity : AppCompatActivity() {
         rel.addView(tv(l.t("Bir gün önce saat 19:00'da ve o gün saat 09:00'da hatırlatır.",
             "Erinnert am Vortag um 19:00 und am Tag selbst um 09:00."), 12f, C.MUTED), lp().apply { topMargin = dp(4) })
 
+        // Sessiz mod
+        val sil = section(root, l.t("NAMAZDA SESSİZ MOD", "STUMM BEIM GEBET"))
+        switchRow(sil, l.t("Vakit girince telefonu sessize al", "Handy zur Gebetszeit stumm schalten"), Silent.enabled(this)) {
+            Silent.setEnabled(this, it); Silent.schedule(this); rebuild()
+        }
+        if (Silent.enabled(this)) {
+            val mr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val vib = !Silent.full(this)
+            mr.addView((if (vib) button(l.t("📳 Titreşim", "📳 Vibration")) {} else ghostButton(l.t("📳 Titreşim", "📳 Vibration")) {
+                Silent.setFull(this, false); rebuild() }), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+            mr.addView((if (!vib) button(l.t("🔕 Tam sessiz", "🔕 Lautlos")) {} else ghostButton(l.t("🔕 Tam sessiz", "🔕 Lautlos")) {
+                Silent.setFull(this, true)
+                if (!Silent.hasPolicyAccess(this)) {
+                    Toast.makeText(this, l.t("Listeden 'Namaz Vakitleri'ni bulup izin verin", "Bitte 'Namaz Vakitleri' erlauben"), Toast.LENGTH_LONG).show()
+                    try { startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) } catch (e: Exception) { }
+                }
+                rebuild() }), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
+            sil.addView(mr, lp().apply { topMargin = dp(8) })
+            if (Silent.full(this) && !Silent.hasPolicyAccess(this)) {
+                sil.addView(tv(l.t("⚠ Tam sessiz için 'Rahatsız Etmeyin' izni gerekli, izin verilene kadar titreşime alınır.",
+                    "⚠ Für 'Lautlos' wird die 'Nicht stören'-Berechtigung benötigt, bis dahin Vibration."), 12f, 0xFFE5A04B.toInt()), lp().apply { topMargin = dp(6) })
+                sil.addView(ghostButton(l.t("İzin ver", "Erlauben")) {
+                    try { startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) } catch (e: Exception) { }
+                }, lp().apply { topMargin = dp(6) })
+            }
+            val mins = intArrayOf(10, 15, 20, 25, 30, 40, 45, 60)
+            sil.addView(ghostButton("⏱ " + l.t("Süre: ${Silent.minutes(this)} dk", "Dauer: ${Silent.minutes(this)} Min.")) {
+                AlertDialog.Builder(this).setItems(mins.map { l.t("$it dakika", "$it Minuten") }.toTypedArray()) { _, w ->
+                    Silent.setMinutes(this, mins[w]); rebuild() }.show()
+            }, lp().apply { topMargin = dp(8) })
+            sil.addView(ghostButton("🕌 " + l.t("Cuma öğle: ${Silent.fridayMinutes(this)} dk", "Freitagsgebet: ${Silent.fridayMinutes(this)} Min.")) {
+                AlertDialog.Builder(this).setItems(mins.map { l.t("$it dakika", "$it Minuten") }.toTypedArray()) { _, w ->
+                    Silent.setFridayMinutes(this, mins[w]); rebuild() }.show()
+            }, lp().apply { topMargin = dp(8) })
+            for (i in intArrayOf(0, 2, 3, 4, 5)) switchRow(sil, l.names[i], Silent.prayer(this, i)) {
+                Silent.setPrayer(this, i, it); Silent.schedule(this)
+            }
+            sil.addView(tv(l.t("Süre bitince ses kendiliğinden eski haline döner. Bildirimdeki 'Sesi şimdi aç' ile erken açabilirsiniz. Ezan sesi sessizde de çalar.",
+                "Danach wird der Ton automatisch wieder eingeschaltet. Der Adhan ertönt trotzdem."), 12f, C.MUTED), lp().apply { topMargin = dp(6) })
+        }
+
         // Ezan
         val ez = section(root, l.t("EZAN SESİ", "ADHAN-TON"))
         switchRow(ez, l.t("Vakit girince ezan çal", "Adhan zur Gebetszeit abspielen"), prefs.adhan) { prefs.adhan = it; rebuild() }
