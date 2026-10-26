@@ -71,9 +71,14 @@ class SettingsActivity : AppCompatActivity() {
 
         // Konum
         val loc = section(root, l.t("KONUM", "STANDORT"))
-        loc.addView(tv("📍 " + prefs.city.name, 17f, C.TEXT, true), lp())
-        loc.addView(tv(String.format(Locale.US, "%.4f, %.4f", prefs.city.lat, prefs.city.lng), 12f, C.MUTED), lp())
-        loc.addView(button(l.t("Şehir / ilçe ara ve seç", "Stadt / Ort suchen")) { chooseCity() }, lp().apply { topMargin = dp(10) })
+        val place = if (prefs.diyanetId > 0) DiyanetDb.byId(this, prefs.diyanetId) else null
+        loc.addView(tv("📍 " + (place?.pretty(l) ?: prefs.city.name), 17f, C.TEXT, true), lp())
+        if (place != null) loc.addView(tv(place.sub(l), 13f, C.MUTED), lp())
+        loc.addView(tv(sourceText(), 13f, if (sourceOk()) C.GOLD else 0xFFE5A04B.toInt()), lp().apply { topMargin = dp(6) })
+        loc.addView(button(l.t("Diyanet ilçesi ara ve seç", "Ort suchen (Diyanet)")) { chooseCity() }, lp().apply { topMargin = dp(10) })
+        if (prefs.diyanetId > 0) loc.addView(ghostButton("⟳ " + l.t("Diyanet'ten şimdi güncelle", "Jetzt von Diyanet laden")) {
+            download(prefs.diyanetId)
+        }, lp().apply { topMargin = dp(8) })
         loc.addView(ghostButton(l.t("Konumumu kullan (GPS)", "Meinen Standort nutzen (GPS)")) { useLocation() }, lp().apply { topMargin = dp(8) })
 
         // Bildirimler
@@ -203,8 +208,8 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         root.addView(tv(l.t(
-            "Vakitler Diyanet yöntemiyle telefonda hesaplanır, internet gerekmez. Almanya'da yaz aylarında Diyanet takviminden 1-3 dk fark olabilir.",
-            "Die Zeiten werden nach der Diyanet-Methode offline berechnet. In Deutschland kann es im Sommer 1-3 Min. Abweichung geben."
+            "Vakitler seçtiğiniz ilçenin Diyanet takviminden alınır ve telefonda saklanır, internet sadece güncellemede gerekir. Diyanet'e ulaşılamazsa vakitler Diyanet yöntemiyle telefonda hesaplanır (yazın 1-4 dk fark olabilir).",
+            "Die Zeiten kommen aus dem Diyanet-Kalender Ihres Ortes und werden gespeichert. Ist Diyanet nicht erreichbar, rechnet das Handy selbst (im Sommer 1-4 Min. Abweichung möglich)."
         ), 12f, C.MUTED), lp().apply { topMargin = dp(18) })
 
         val sv = ScrollView(this).apply { setBackgroundColor(C.BG) }
@@ -224,6 +229,49 @@ class SettingsActivity : AppCompatActivity() {
         (window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0) as? ScrollView)?.post {
             (window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0) as? ScrollView)?.scrollTo(0, y)
         }
+    }
+
+    private fun sourceOk(): Boolean = prefs.fromDiyanet(java.time.LocalDate.now(prefs.zone))
+
+    private fun sourceText(): String {
+        val id = prefs.diyanetId
+        if (id <= 0) return "⚠ " + l.t("Diyanet ilçesi seçilmedi · vakitler hesaplanıyor", "Kein Diyanet-Ort gewählt · Zeiten werden berechnet")
+        if (!sourceOk()) return "⚠ " + l.t("Diyanet verisi henüz yok · şimdilik hesaplanıyor", "Noch keine Diyanet-Daten · vorläufig berechnet")
+        val df = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
+        val last = DiyanetTimes.lastDate(this, id)?.format(df) ?: "-"
+        val at = java.time.Instant.ofEpochMilli(DiyanetTimes.fetchedAt(this, id)).atZone(prefs.zone).toLocalDate().format(df)
+        return "✅ " + l.t("Diyanet takvimi · $last tarihine kadar · güncelleme: $at", "Diyanet-Kalender · bis $last · aktualisiert: $at")
+    }
+
+    /** Diyanet'ten indir, sonucu göster. */
+    private fun download(id: Int, onFail: (() -> Unit)? = null) {
+        val dlg = AlertDialog.Builder(this).setMessage(l.t("Diyanet'ten vakitler indiriliyor…", "Zeiten werden von Diyanet geladen…"))
+            .setCancelable(false).show()
+        Thread {
+            val r = DiyanetTimes.fetch(this, id)
+            Scheduler.scheduleNext(this)
+            runOnUiThread {
+                try { dlg.dismiss() } catch (e: Exception) { }
+                if (r.error == null) {
+                    Toast.makeText(this, l.t("✅ ${r.days} günlük Diyanet takvimi indirildi", "✅ Diyanet-Kalender für ${r.days} Tage geladen"), Toast.LENGTH_LONG).show()
+                } else {
+                    AlertDialog.Builder(this).setMessage(l.t(
+                        "Diyanet'e şu an ulaşılamadı. İnternet bağlantınızı kontrol edin. O zamana kadar vakitler telefonda hesaplanıyor.",
+                        "Diyanet ist gerade nicht erreichbar. Bis dahin werden die Zeiten berechnet."
+                    ) + "\n\n(" + r.error + ")").setPositiveButton("OK", null).show()
+                    onFail?.invoke()
+                }
+                rebuild()
+            }
+        }.start()
+    }
+
+    private fun selectPlace(id: Int) {
+        Thread {
+            val pl = DiyanetDb.byId(this, id) ?: return@Thread
+            DiyanetSelect.apply(this, pl)
+            runOnUiThread { rebuild(); download(id) }
+        }.start()
     }
 
     private fun setCity(c: City) {
@@ -287,17 +335,39 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun applyLocation(loc: Location) {
         Thread {
-            var name = l.t("Konumum", "Mein Standort")
+            var names = ArrayList<String>()
+            var cc: String? = null
             try {
                 @Suppress("DEPRECATION")
-                val a = Geocoder(this, l.locale).getFromLocation(loc.latitude, loc.longitude, 1)
-                val n = a?.firstOrNull()?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
-                if (!n.isNullOrBlank()) name = n
+                val a = Geocoder(this, Locale.GERMANY).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()
+                if (a != null) {
+                    cc = a.countryCode
+                    listOfNotNull(a.locality, a.subAdminArea, a.subLocality).forEach { if (it.isNotBlank()) names.add(it) }
+                }
             } catch (e: Exception) { }
-            val c = City(name, loc.latitude, loc.longitude, ZoneId.systemDefault().id)
+            // Diyanet listesinde aynı isimli ilçeyi bul; yoksa en yakın bilinen şehre göre ara
+            val all = DiyanetDb.load(this)
+            var found: DiyanetDb.Place? = null
+            for (n in names) {
+                val k = CityDb.norm(n.split('(', ',')[0])
+                found = all.firstOrNull { it.key == k && (cc == null || it.cc == cc) } ?: continue
+                break
+            }
+            if (found == null) {
+                // Yakındaki şehirlerden Diyanet listesinde olanı seç (en yakın)
+                val near = CityDb.load(this).filter { cc == null || it.cc == cc }
+                    .sortedBy { (it.lat - loc.latitude) * (it.lat - loc.latitude) + (it.lng - loc.longitude) * (it.lng - loc.longitude) }
+                    .take(60)
+                for (r in near) { found = all.firstOrNull { it.key == r.key && it.cc == r.cc }; if (found != null) break }
+            }
+            val f = found
             runOnUiThread {
-                setCity(c)
-                Toast.makeText(this, "📍 $name", Toast.LENGTH_SHORT).show()
+                if (f != null) {
+                    Toast.makeText(this, "📍 " + f.pretty(l), Toast.LENGTH_SHORT).show()
+                    selectPlace(f.id)
+                } else {
+                    startActivityForResult(Intent(this, CityPickerActivity::class.java).putExtra("q", names.firstOrNull() ?: ""), 50)
+                }
             }
         }.start()
     }
@@ -306,9 +376,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 50) {
-            if (resultCode == RESULT_OK && data != null) setCity(City(
-                data.getStringExtra("name") ?: "?", data.getDoubleExtra("lat", 50.11), data.getDoubleExtra("lng", 8.68),
-                data.getStringExtra("tz") ?: ZoneId.systemDefault().id))
+            val id = data?.getIntExtra("id", 0) ?: 0
+            if (resultCode == RESULT_OK && id > 0) selectPlace(id)
             return
         }
         val idx = requestCode - pickAudio - 100

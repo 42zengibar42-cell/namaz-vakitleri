@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dayLabel: TextView
     private lateinit var hijriLabel: TextView
     private lateinit var dayInfo: TextView
+    private lateinit var sourceLabel: TextView
     private val rowViews = ArrayList<LinearLayout>()
     private val timeViews = ArrayList<TextView>()
     private val bellViews = ArrayList<TextView>()
@@ -54,6 +55,9 @@ class MainActivity : AppCompatActivity() {
         Scheduler.channels(this)
         Scheduler.scheduleNext(this)
         handler.removeCallbacks(tick); handler.post(tick)
+        if (prefs.diyanetId > 0) DiyanetTimes.refreshAsync(this, prefs.diyanetId) { r ->
+            if (r.error == null) runOnUiThread { if (!isFinishing) fillDay() }
+        }
     }
 
     override fun onPause() { super.onPause(); handler.removeCallbacks(tick) }
@@ -143,9 +147,11 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(b2, lp().apply { topMargin = dp(10) })
 
-        root.addView(tv(l.t("Hesaplama: Diyanet yöntemi", "Berechnung: Diyanet-Methode"), 12f, C.MUTED).apply {
+        sourceLabel = tv("", 12f, C.MUTED).apply {
             gravity = Gravity.CENTER
-        }, lp().apply { topMargin = dp(14) })
+            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        }
+        root.addView(sourceLabel, lp().apply { topMargin = dp(14) })
 
         val sv = ScrollView(this).apply { setBackgroundColor(C.BG); isFillViewport = true }
         sv.addView(root)
@@ -173,6 +179,8 @@ class MainActivity : AppCompatActivity() {
             else -> ds
         }
         hijriLabel.text = Hijri.text(l, date)
+        sourceLabel.text = if (prefs.fromDiyanet(date)) "✅ " + l.t("Kaynak: Diyanet takvimi", "Quelle: Diyanet-Kalender")
+            else "⚠ " + l.t("Diyanet verisi yok · vakitler hesaplandı (Diyanet yöntemi)", "Keine Diyanet-Daten · berechnet (Diyanet-Methode)")
         dayInfo.text = dayInfoText(date)
         dayInfo.visibility = if (dayInfo.text.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
         updateCountdown()

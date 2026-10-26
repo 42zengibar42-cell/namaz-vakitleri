@@ -181,6 +181,12 @@ object DiyanetTimes {
             if (ts.size == 6 && ts.all { it in 0 until 24 * 60 } && ts[0] < ts[2] && ts[2] < ts[3] && ts[3] < ts[4]) out[d] = ts.toIntArray()
         }
         for (m in rowRe.findAll(html)) take(text(m.groupValues[1]))
+        if (out.isEmpty()) {
+            // Tablo yapısı değişmişse: düz metinde "tarih + 6 saat" dizilerini ara
+            val t = text(html)
+            for (m in dotDate.findAll(t)) take(t.substring(m.range.first, minOf(t.length, m.range.first + 220)))
+            for (m in longDate.findAll(t)) take(t.substring(m.range.first, minOf(t.length, m.range.first + 260)))
+        }
         return out
     }
 

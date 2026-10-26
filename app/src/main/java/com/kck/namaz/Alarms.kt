@@ -137,6 +137,8 @@ class AlarmReceiver : BroadcastReceiver() {
             } else show(ctx, idx, time)
         }
         Scheduler.scheduleNext(ctx)
+        val id = prefs.diyanetId
+        if (id > 0) DiyanetTimes.refreshAsync(ctx, id)
     }
 
     private fun show(ctx: Context, idx: Int, time: Long) {
