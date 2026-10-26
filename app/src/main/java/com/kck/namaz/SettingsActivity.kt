@@ -184,6 +184,23 @@ class SettingsActivity : AppCompatActivity() {
             r.addView(minus); r.addView(v); r.addView(plus)
             adj.addView(r, lp())
         }
+        run {
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, dp(4)) }
+            r.addView(tv(l.t("Bayram namazı", "Festgebet"), 16f), lp(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            val v = tv(fmtOff(prefs.bayramOffset), 16f, C.GOLD, true).apply { gravity = Gravity.CENTER; minWidth = dp(64) }
+            val minus = tv(" − ", 22f, C.GOLD, true).apply {
+                background = roundBg(C.HI, dp(8).toFloat()); setPadding(dp(12), 0, dp(12), 0)
+                setOnClickListener { prefs.bayramOffset = (prefs.bayramOffset - 1).coerceAtLeast(-60); v.text = fmtOff(prefs.bayramOffset); Scheduler.scheduleReligious(this@SettingsActivity) }
+            }
+            val plus = tv(" + ", 22f, C.GOLD, true).apply {
+                background = roundBg(C.HI, dp(8).toFloat()); setPadding(dp(12), 0, dp(12), 0)
+                setOnClickListener { prefs.bayramOffset = (prefs.bayramOffset + 1).coerceAtMost(60); v.text = fmtOff(prefs.bayramOffset); Scheduler.scheduleReligious(this@SettingsActivity) }
+            }
+            r.addView(minus); r.addView(v); r.addView(plus)
+            adj.addView(r, lp())
+            adj.addView(tv(l.t("Almanya'da camiler bayram namazını bazen hesaplanan saatten daha geç kıldırır. Caminizin ilan ettiği saate göre ayarlayın.",
+                "Moscheen in Deutschland beten das Festgebet oft später. Bitte an die Zeit Ihrer Moschee anpassen."), 12f, C.MUTED), lp().apply { topMargin = dp(4) })
+        }
 
         root.addView(tv(l.t(
             "Vakitler Diyanet yöntemiyle telefonda hesaplanır, internet gerekmez. Almanya'da yaz aylarında Diyanet takviminden 1-3 dk fark olabilir.",

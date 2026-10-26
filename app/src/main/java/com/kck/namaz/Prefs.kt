@@ -89,6 +89,15 @@ class Prefs(ctx: Context) {
     fun adhanOn(i: Int): Boolean = p.getBoolean("adhanOn$i", true)
     fun setAdhanOn(i: Int, v: Boolean) = p.edit().putBoolean("adhanOn$i", v).apply()
 
+    var bayramOffset: Int
+        get() = p.getInt("oBayram", 0)
+        set(v) = p.edit().putInt("oBayram", v).apply()
+
+    fun bayram(date: LocalDate): Long {
+        val c = city
+        return PrayerCalc.bayram(date, c.lat, c.lng, zone, bayramOffset)
+    }
+
     fun times(date: LocalDate): LongArray {
         val c = city
         return PrayerCalc.times(date, c.lat, c.lng, zone, offsets())

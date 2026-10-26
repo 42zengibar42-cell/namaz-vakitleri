@@ -95,6 +95,25 @@ object PrayerCalc {
         return out
     }
 
+    /**
+     * Bayram namazı vakti: güneşin ufkun 5° üzerine çıktığı an (kerahat vaktinin sonu).
+     * Diyanet'in 2026 Ramazan ve Kurban bayramı saatleriyle karşılaştırıldı (±1 dk).
+     */
+    fun bayram(date: LocalDate, lat: Double, lng: Double, zone: ZoneId, offsetMin: Int = 0): Long {
+        val noon12 = ZonedDateTime.of(date.atTime(12, 0), zone)
+        val tz = noon12.offset.totalSeconds / 3600.0
+        val jd = julian(date.year, date.monthValue, date.dayOfMonth) - lng / (15.0 * 24.0)
+        var t = 7.0
+        repeat(3) {
+            val (decl, eqt) = sun(jd + t / 24.0)
+            val ha = hourAngle(-5.0, decl, lat)
+            if (!ha.isNaN()) t = fix(12 - eqt, 24.0) - ha
+        }
+        val h = t + tz - lng / 15.0
+        val mins = Math.round(h * 60).toInt() + offsetMin
+        return date.atStartOfDay().plusMinutes(mins.toLong()).atZone(zone).toInstant().toEpochMilli()
+    }
+
     /** Verilen gün için 6 vakit (epoch milisaniye). offsets: dakika düzeltmeleri. */
     fun times(date: LocalDate, lat: Double, lng: Double, zone: ZoneId, offsets: IntArray? = null): LongArray {
         val noon = ZonedDateTime.of(date.atTime(12, 0), zone)

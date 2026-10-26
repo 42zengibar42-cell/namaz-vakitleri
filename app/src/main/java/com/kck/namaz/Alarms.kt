@@ -49,7 +49,9 @@ object Scheduler {
         var best: Triple<Long, Int, Boolean>? = null
         ReligiousDays.all.forEachIndexed { i, d ->
             val before = d.date.minusDays(1).atTime(19, 0).atZone(zone).toInstant().toEpochMilli()
-            val on = d.date.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            // Bayramlarda o günkü hatırlatma bayram namazından 1 saat önce
+            val on = if (ReligiousDays.isBayram(d.kind)) prefs.bayram(d.date) - 3600_000L
+                else d.date.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
             for ((t, isBefore) in listOf(Pair(before, true), Pair(on, false))) {
                 if (t > now + 1000 && (best == null || t < best!!.first)) best = Triple(t, i, isBefore)
             }
@@ -163,7 +165,10 @@ class ReligiousReceiver : BroadcastReceiver() {
             val l = L(ctx)
             // Aynı gün başka etkinlik varsa başlığa ekle (ör. Üç Aylar + Regaib)
             val same = all.filter { it.date == d.date && it !== d }
-            var (title, text) = ReligiousDays.message(l, d, before)
+            val bt = if (ReligiousDays.isBayram(d.kind)) java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMANY).apply {
+                timeZone = java.util.TimeZone.getTimeZone(Prefs(ctx).zone)
+            }.format(java.util.Date(Prefs(ctx).bayram(d.date))) else null
+            var (title, text) = ReligiousDays.message(l, d, before, bt)
             if (same.isNotEmpty()) text = same.joinToString(", ") { ReligiousDays.name(l, it.kind) } + " · " + text
             val n = NotificationCompat.Builder(ctx, Scheduler.CH_GUN)
                 .setSmallIcon(R.drawable.ic_notif)

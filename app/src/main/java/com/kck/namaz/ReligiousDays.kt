@@ -127,7 +127,9 @@ object ReligiousDays {
     fun hijriText(l: L, d: RDay): String = "${d.hDay} ${l.hijriMonths.getOrElse(d.hMonth - 1) { "" }} ${d.hYear}"
 
     /** Bildirim metni. dayBefore=true ise bir gün önceki hatırlatma. */
-    fun message(l: L, d: RDay, dayBefore: Boolean): Pair<String, String> {
+    fun isBayram(k: Kind) = k == Kind.R_BAYRAM || k == Kind.K_BAYRAM
+
+    fun message(l: L, d: RDay, dayBefore: Boolean, bayramTime: String? = null): Pair<String, String> {
         val n = name(l, d.kind)
         return if (dayBefore) when {
             d.kind == Kind.RAMAZAN -> Pair(l.t("Yarın Ramazan başlıyor", "Morgen beginnt der Ramadan"),
@@ -135,7 +137,8 @@ object ReligiousDays {
             d.kind.night -> Pair(l.t("Yarın akşam $n", "Morgen Abend: $n"),
                 l.t("$n yarın akşam idrak edilecek.", "Die $n ist morgen Abend."))
             d.kind == Kind.R_BAYRAM || d.kind == Kind.K_BAYRAM -> Pair(l.t("Yarın $n", "Morgen: $n"),
-                l.t("Bayram namazı vaktini unutmayın.", "Denken Sie an das Festgebet."))
+                if (bayramTime != null) l.t("Bayram namazı yarın saat $bayramTime.", "Festgebet morgen um $bayramTime Uhr.")
+                else l.t("Bayram namazı vaktini unutmayın.", "Denken Sie an das Festgebet."))
             else -> Pair(l.t("Yarın: $n", "Morgen: $n"), hijriText(l, d))
         } else when {
             d.kind == Kind.RAMAZAN -> Pair(l.t("Hayırlı Ramazanlar 🌙", "Gesegneten Ramadan 🌙"),
@@ -143,7 +146,8 @@ object ReligiousDays {
             d.kind.night -> Pair(l.t("Bu gece $n 🕯", "Heute Nacht: $n 🕯"),
                 l.t("Kandiliniz mübarek olsun.", "Gesegnete Nacht!"))
             d.kind == Kind.R_BAYRAM || d.kind == Kind.K_BAYRAM -> Pair(l.t("$n mübarek olsun 🎉", "Gesegnetes $n 🎉"),
-                l.t("Bayramınız kutlu olsun.", "Frohes Fest!"))
+                if (bayramTime != null) l.t("Bayram namazı saat $bayramTime. Bayramınız kutlu olsun.", "Festgebet um $bayramTime Uhr. Frohes Fest!")
+                else l.t("Bayramınız kutlu olsun.", "Frohes Fest!"))
             else -> Pair(l.t("Bugün: $n", "Heute: $n"), hijriText(l, d))
         }
     }

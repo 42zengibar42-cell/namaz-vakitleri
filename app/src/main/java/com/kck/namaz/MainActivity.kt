@@ -218,12 +218,18 @@ class MainActivity : AppCompatActivity() {
         }
         for (d in ReligiousDays.onDate(date)) {
             if (d.kind == Kind.RAMAZAN) continue
+            if (ReligiousDays.isBayram(d.kind) && date == d.date) {
+                parts.add("🕌 " + l.t("Bayram namazı ", "Festgebet ") + hm(prefs.bayram(date)))
+            }
             parts.add(ReligiousDays.emoji(d.kind) + " " + ReligiousDays.name(l, d.kind) +
                 if (d.kind.night) l.t(" (bu akşam)", " (heute Abend)") else "")
         }
         if (parts.isEmpty()) {
             ReligiousDays.onDate(date.plusDays(1)).firstOrNull()?.let {
-                parts.add(l.t("Yarın: ", "Morgen: ") + ReligiousDays.name(l, it.kind))
+                var s = l.t("Yarın: ", "Morgen: ") + ReligiousDays.name(l, it.kind)
+                if (ReligiousDays.isBayram(it.kind) && it.date == date.plusDays(1))
+                    s += " · " + l.t("bayram namazı ", "Festgebet ") + hm(prefs.bayram(it.date))
+                parts.add(s)
             }
         }
         return parts.joinToString("  ·  ")

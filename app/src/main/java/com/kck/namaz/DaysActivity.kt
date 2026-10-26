@@ -66,6 +66,11 @@ class DaysActivity : AppCompatActivity() {
             if (d.kind == Kind.RAMAZAN) sub += l.t(" · ilk sahur bir önceki gece", " · erster Sahur in der Nacht davor")
             if (!d.official) sub += l.t(" · tahmini", " · voraussichtlich")
             box.addView(tv(sub, 12f, C.MUTED), lp().apply { topMargin = dp(2) })
+            if (ReligiousDays.isBayram(d.kind)) {
+                val hmF = java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMANY).apply { timeZone = java.util.TimeZone.getTimeZone(prefs.zone) }
+                box.addView(tv("🕌 " + l.t("Bayram namazı: ", "Festgebet: ") + hmF.format(java.util.Date(prefs.bayram(d.date))) +
+                    "  (${prefs.city.name})", 15f, C.GOLD, true), lp().apply { topMargin = dp(6) })
+            }
             root.addView(box, lp().apply { topMargin = dp(8) })
             if (i == maxOf(0, nextIdx - 1)) scrollTarget = box
         }
