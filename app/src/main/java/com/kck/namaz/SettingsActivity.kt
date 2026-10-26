@@ -73,7 +73,7 @@ class SettingsActivity : AppCompatActivity() {
         val loc = section(root, l.t("KONUM", "STANDORT"))
         loc.addView(tv("📍 " + prefs.city.name, 17f, C.TEXT, true), lp())
         loc.addView(tv(String.format(Locale.US, "%.4f, %.4f", prefs.city.lat, prefs.city.lng), 12f, C.MUTED), lp())
-        loc.addView(button(l.t("Şehir seç", "Stadt wählen")) { chooseCity() }, lp().apply { topMargin = dp(10) })
+        loc.addView(button(l.t("Şehir / ilçe ara ve seç", "Stadt / Ort suchen")) { chooseCity() }, lp().apply { topMargin = dp(10) })
         loc.addView(ghostButton(l.t("Konumumu kullan (GPS)", "Meinen Standort nutzen (GPS)")) { useLocation() }, lp().apply { topMargin = dp(8) })
 
         // Bildirimler
@@ -216,9 +216,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun chooseCity() {
-        val names = Cities.list.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this).setTitle(l.t("Şehir seç", "Stadt wählen"))
-            .setItems(names) { _, w -> setCity(Cities.list[w]) }.show()
+        startActivityForResult(Intent(this, CityPickerActivity::class.java), 50)
     }
 
     private fun useLocation() {
@@ -290,6 +288,12 @@ class SettingsActivity : AppCompatActivity() {
     @Deprecated("")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 50) {
+            if (resultCode == RESULT_OK && data != null) setCity(City(
+                data.getStringExtra("name") ?: "?", data.getDoubleExtra("lat", 50.11), data.getDoubleExtra("lng", 8.68),
+                data.getStringExtra("tz") ?: ZoneId.systemDefault().id))
+            return
+        }
         val idx = requestCode - pickAudio - 100
         if (idx !in 0 until PrayerCalc.COUNT || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
