@@ -39,7 +39,16 @@ object Cities {
 }
 
 class Prefs(ctx: Context) {
+    private val app: Context = ctx.applicationContext ?: ctx
     private val p: SharedPreferences = ctx.getSharedPreferences("namaz", Context.MODE_PRIVATE)
+
+    /** Diyanet ilçe numarası (0 = seçilmedi). Varsayılan: Frankfurt (Hessen). */
+    var diyanetId: Int
+        get() = p.getInt("diyanetId", if ((p.getString("city", null) ?: "Frankfurt am Main") == "Frankfurt am Main") 11010 else 0)
+        set(v) = p.edit().putInt("diyanetId", v).apply()
+
+    /** Bu gün için Diyanet verisi var mı? */
+    fun fromDiyanet(date: LocalDate): Boolean = diyanetId > 0 && DiyanetTimes.has(app, diyanetId, date)
 
     var lang: String
         get() = p.getString("lang", "tr") ?: "tr"
@@ -99,8 +108,26 @@ class Prefs(ctx: Context) {
     }
 
     fun times(date: LocalDate): LongArray {
+        val id = diyanetId
+        if (id > 0) {
+            val d = DiyanetTimes.get(app, id, date)
+            if (d != null) {
+                val o = offsets()
+                return LongArray(PrayerCalc.COUNT) { i ->
+                    date.atStartOfDay().plusMinutes((d[i] + o[i]).toLong()).atZone(zone).toInstant().toEpochMilli()
+                }
+            }
+        }
         val c = city
         return PrayerCalc.times(date, c.lat, c.lng, zone, offsets())
+    }
+
+    /** Kıble açısı: Diyanet'in verdiği açı varsa o, yoksa koordinattan hesap. */
+    fun qibla(): Double {
+        val id = diyanetId
+        if (id > 0) DiyanetTimes.qibla(app, id)?.let { return it }
+        val c = city
+        return PrayerCalc.qibla(c.lat, c.lng)
     }
 }
 

@@ -75,15 +75,43 @@ object CityDb {
     }
 }
 
+/** Diyanet ilçesini seçince koordinat/saat dilimi bulur ve kaydeder. */
+object DiyanetSelect {
+    fun coordsFor(ctx: Context, pl: DiyanetDb.Place): City? {
+        val all = CityDb.load(ctx)
+        val inCc = all.filter { it.cc == pl.cc }
+        val st = CityDb.norm(pl.state)
+        val base = CityDb.norm(pl.name.split('/', '(', ',')[0])
+        fun pick(rows: List<CityDb.Row>): CityDb.Row? =
+            rows.firstOrNull { st.isNotEmpty() && (CityDb.norm(it.region) == st || (it.region.isEmpty() && it.key == st)) } ?: rows.firstOrNull()
+        val exact = inCc.filter { it.key == base }
+        val r = pick(exact)
+            ?: pick(inCc.filter { it.key.startsWith(base) || base.startsWith(it.key + " ") })
+            ?: (if (base == "merkez" || base.isEmpty()) inCc.firstOrNull { it.key == st } else null)
+            ?: inCc.firstOrNull { st.isNotEmpty() && it.key == st }
+            ?: inCc.firstOrNull { st.isNotEmpty() && CityDb.norm(it.region) == st }
+            ?: inCc.firstOrNull()
+            ?: return null
+        val name = if (r.key == base) r.name else pl.pretty(L(ctx))
+        return City(name, r.lat, r.lng, r.tz)
+    }
+
+    /** Kaydeder; koordinat bulunamazsa eskisini tutar. Arka planda çağırın. */
+    fun apply(ctx: Context, pl: DiyanetDb.Place) {
+        val prefs = Prefs(ctx)
+        val c = coordsFor(ctx, pl)
+        prefs.city = c ?: prefs.city.copy(name = pl.pretty(L(ctx)))
+        prefs.diyanetId = pl.id
+    }
+}
+
 class CityPickerActivity : AppCompatActivity() {
     private lateinit var l: L
     private lateinit var input: EditText
     private lateinit var listView: ListView
     private lateinit var status: TextView
-    private var items: List<Item> = emptyList()
+    private var items: List<DiyanetDb.Place> = emptyList()
     private var searchSeq = 0
-
-    data class Item(val title: String, val sub: String, val city: City?, val online: Boolean = false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,35 +120,37 @@ class CityPickerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(C.BG)
             setPadding(dp(16), dp(18), dp(16), dp(8))
         }
-        root.addView(tv(l.t("Şehir / ilçe seç", "Stadt / Ort wählen"), 22f, C.TEXT, true))
+        root.addView(tv(l.t("Diyanet ilçe seçimi", "Ort wählen (Diyanet)"), 22f, C.TEXT, true))
+        root.addView(tv(l.t("Vakitler seçtiğiniz yerin Diyanet takviminden alınır.",
+            "Die Zeiten kommen aus dem Diyanet-Kalender dieses Ortes."), 13f, C.MUTED), lp())
         input = EditText(this).apply {
-            hint = l.t("Ara: ör. Dietzenbach, Kadıköy…", "Suchen: z. B. Dietzenbach, Kadıköy…")
+            hint = l.t("Ara: ör. Dietzenbach, Kadıköy, Hessen…", "Suchen: z. B. Dietzenbach, Kadıköy…")
             setHintTextColor(C.MUTED); setTextColor(C.TEXT); textSize = 17f
             background = roundBg(C.CARD, dp(12).toFloat(), C.HI)
             setPadding(dp(14), dp(12), dp(14), dp(12))
             isSingleLine = true
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setOnEditorActionListener { _, _, _ -> onlineSearch(); true }
+            setText(intent.getStringExtra("q") ?: "")
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: Editable?) { localSearch() }
+                override fun afterTextChanged(s: Editable?) { search() }
             })
         }
         root.addView(input, lp().apply { topMargin = dp(12) })
         status = tv("", 13f, C.MUTED)
         root.addView(status, lp().apply { topMargin = dp(6); bottomMargin = dp(4) })
         listView = ListView(this).apply {
-            divider = null; isVerticalScrollBarEnabled = true
-            setOnItemClickListener { _, _, pos, _ -> pick(items.getOrNull(pos)) }
+            divider = null
+            setOnItemClickListener { _, _, pos, _ -> items.getOrNull(pos)?.let { pick(it) } }
         }
         root.addView(listView, lp(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         status.text = l.t("Yükleniyor…", "Wird geladen…")
-        Thread { CityDb.load(this); runOnUiThread { localSearch() } }.start()
+        Thread { DiyanetDb.load(this); CityDb.load(this); runOnUiThread { search() } }.start()
     }
 
-    private fun show(list: List<Item>) {
+    private fun show(list: List<DiyanetDb.Place>) {
         items = list
         listView.adapter = object : BaseAdapter() {
             override fun getCount() = items.size
@@ -131,88 +161,35 @@ class CityPickerActivity : AppCompatActivity() {
                 val box = LinearLayout(this@CityPickerActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(12), dp(11), dp(12), dp(11))
-                    background = if (it.city == null) roundBg(C.HI, dp(12).toFloat()) else null
                 }
-                box.addView(tv(it.title, 17f, if (it.city == null) C.GOLD else C.TEXT, it.city == null || p < 0))
-                if (it.sub.isNotEmpty()) box.addView(tv(it.sub, 13f, C.MUTED))
+                box.addView(tv(it.pretty(l), 17f, C.TEXT))
+                box.addView(tv(it.sub(l), 13f, C.MUTED))
                 return box
             }
         }
     }
 
-    private fun localSearch() {
+    private fun search() {
         val q = input.text.toString()
         val seq = ++searchSeq
         Thread {
-            val res = CityDb.search(this, q)
+            val res = DiyanetDb.search(this, q)
             runOnUiThread {
                 if (seq != searchSeq) return@runOnUiThread
-                val list = ArrayList<Item>()
-                for (r in res) {
-                    val sub = listOf(r.region, CityDb.country(r.cc)).filter { it.isNotEmpty() }.joinToString(", ")
-                    list.add(Item(r.name, sub, City(r.name, r.lat, r.lng, r.tz)))
-                }
-                if (q.trim().length >= 2) list.add(Item("🔍 " + l.t("İnternette ara: \"${q.trim()}\"", "Im Internet suchen: \"${q.trim()}\""),
-                    l.t("Listede yoksa köy, mahalle veya adres de arayabilirsiniz", "Auch Dörfer, Stadtteile oder Adressen"), null))
                 status.text = when {
-                    q.isBlank() -> l.t("Hessen ve Türkiye'nin büyük şehirleri · yazarak arayın", "Große Städte in Hessen und der Türkei · zum Suchen tippen")
-                    res.isEmpty() -> l.t("Listede bulunamadı", "Nicht in der Liste")
+                    q.isBlank() -> l.t("Hessen · başka yer için yazarak arayın (ilçe, il, eyalet veya ülke)",
+                        "Hessen · zum Suchen tippen (Ort, Bundesland oder Land)")
+                    res.isEmpty() -> l.t("Diyanet listesinde bulunamadı. En yakın büyük yeri arayın.",
+                        "Nicht in der Diyanet-Liste. Bitte den nächsten größeren Ort suchen.")
                     else -> l.t("${res.size} sonuç", "${res.size} Treffer")
                 }
-                show(list)
+                show(res)
             }
         }.start()
     }
 
-    private fun onlineSearch() {
-        val q = input.text.toString().trim()
-        if (q.length < 2) return
-        if (!Geocoder.isPresent()) {
-            status.text = l.t("Bu telefonda internet araması yok. GPS ile konumu kullanın.", "Keine Online-Suche verfügbar. Bitte GPS nutzen.")
-            return
-        }
-        status.text = l.t("İnternette aranıyor…", "Online-Suche…")
-        val seq = ++searchSeq
-        Thread {
-            val found = ArrayList<Item>()
-            var error = false
-            try {
-                @Suppress("DEPRECATION")
-                val res = Geocoder(this, l.locale).getFromLocationName(q, 10) ?: emptyList()
-                for (a in res) {
-                    val name = a.locality ?: a.subLocality ?: a.subAdminArea ?: a.featureName ?: q
-                    val sub = listOfNotNull(a.subAdminArea?.takeIf { it != name }, a.adminArea, a.countryName).distinct().joinToString(", ")
-                    val tz = tzFor(a.countryCode, a.latitude, a.longitude)
-                    found.add(Item(name, sub, City(name, a.latitude, a.longitude, tz), online = true))
-                }
-            } catch (e: Exception) { error = true }
-            runOnUiThread {
-                if (seq != searchSeq) return@runOnUiThread
-                status.text = when {
-                    error -> l.t("İnternet araması yapılamadı. İnternet bağlantısını kontrol edin.", "Online-Suche fehlgeschlagen. Internet prüfen.")
-                    found.isEmpty() -> l.t("Bulunamadı. Farklı yazmayı deneyin.", "Nichts gefunden.")
-                    else -> l.t("İnternet sonuçları", "Online-Ergebnisse")
-                }
-                if (found.isNotEmpty()) show(found)
-            }
-        }.start()
-    }
-
-    /** Ülke koduna göre saat dilimi; birden fazla dilimli ülkelerde en yakın şehrinkini kullan. */
-    private fun tzFor(cc: String?, lat: Double, lng: Double): String {
-        val all = CityDb.load(this)
-        val pool = if (cc != null) all.filter { it.cc == cc.uppercase() } else all
-        val src = if (pool.isEmpty()) all else pool
-        return src.minByOrNull { (it.lat - lat) * (it.lat - lat) + (it.lng - lng) * (it.lng - lng) }?.tz
-            ?: java.time.ZoneId.systemDefault().id
-    }
-
-    private fun pick(it: Item?) {
-        if (it == null) return
-        if (it.city == null) { onlineSearch(); return }
-        val c = it.city
-        setResult(Activity.RESULT_OK, Intent()
-            .putExtra("name", c.name).putExtra("lat", c.lat).putExtra("lng", c.lng).putExtra("tz", c.tz))
+    private fun pick(p: DiyanetDb.Place) {
+        setResult(Activity.RESULT_OK, Intent().putExtra("id", p.id))
         finish()
     }
 }

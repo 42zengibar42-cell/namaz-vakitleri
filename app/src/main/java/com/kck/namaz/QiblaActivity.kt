@@ -28,7 +28,7 @@ class QiblaActivity : AppCompatActivity(), SensorEventListener {
         super.onCreate(savedInstanceState)
         l = L(this)
         val c = Prefs(this).city
-        qibla = PrayerCalc.qibla(c.lat, c.lng)
+        qibla = Prefs(this).qibla()
         declination = GeomagneticField(c.lat.toFloat(), c.lng.toFloat(), 100f, System.currentTimeMillis()).declination
 
         val root = LinearLayout(this).apply {
